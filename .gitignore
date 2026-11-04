@@ -321,3 +321,6 @@ wiki-generated/
 /local-dev/koreader-emulator/*
 !/local-dev/koreader-emulator/Dockerfile
 !/local-dev/koreader-emulator/entrypoint.sh
+
+# Disposable native Windows proof runtime, wheel build and logs.
+/.m0/
