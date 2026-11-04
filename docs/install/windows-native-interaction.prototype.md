@@ -1,6 +1,8 @@
 # Windows interaction review prototype
 
-**Status: awaiting live human review. Throwaway planning artifact; never merge this branch.**
+**Status: approved by the human on 2026-11-04. Throwaway planning artifact; never merge this branch.**
+
+The [authoritative interaction resolution](https://github.com/dapih/Calibre-Web-NextGen/issues/7#issuecomment-6628686215) records the approval and implementation limits. The exact reviewed HTML is at commit `fcc602c213a2f4bab5fb30333ac2e4d1d14a4ceb`; the later documentation update only records the verdict.
 
 Question: do the approved per-user installer, first-run, tray, update and uninstall behaviors remain understandable when setup or background work fails? This reviews interaction and state transitions, not visual branding or native runtime feasibility.
 
@@ -41,4 +43,4 @@ Agent walkthrough on 2026-11-04 completed all 15 guided scenarios in the browser
 
 The reducer is a conceptual interaction model. Its counts, simulated jobs, restart budget, copy completion, hashes, checkpoint success, safe stops and recovery verification stand in for work the implementation must actually prove. It neither implements nor validates Windows process ownership, ACLs, paths, NTFS/cloud detection, credentials, firewall rules, real ingest, migrations, backup consistency or recovery. Opening the HTML is not an installation acceptance test.
 
-Keep the ticket open until the human reviews the running artifact and states accepted behavior or requested changes. Record that verdict on the ticket. Native proof and clean-machine/offline acceptance remain future release gates.
+The human approved the running artifact without requesting revisions; the ticket is resolved. Native proof and clean-machine/offline acceptance remain future release gates. The final implementation specification must carry the accepted interaction and pending evidence requirements forward.
