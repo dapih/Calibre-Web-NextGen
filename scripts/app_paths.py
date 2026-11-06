@@ -133,9 +133,16 @@ def _validated_runtime_dir(value, source):
     """
     configured = value.strip()
     path = Path(configured)
-    normalised = posixpath.normpath(
-        "/" + configured.lstrip("/") if path.is_absolute() else configured
-    )
+    if os.name == "nt":
+        normalised = os.path.normpath(configured)
+        root_equivalent = bool(path.anchor) and (
+            os.path.normcase(normalised) == os.path.normcase(os.path.normpath(path.anchor))
+        )
+    else:
+        normalised = posixpath.normpath(
+            "/" + configured.lstrip("/") if path.is_absolute() else configured
+        )
+        root_equivalent = normalised == "/"
     if (
         not configured
         or "\x00" in configured
@@ -143,7 +150,7 @@ def _validated_runtime_dir(value, source):
         or "\r" in configured
         or not path.is_absolute()
         or ".." in path.parts
-        or normalised == "/"
+        or root_equivalent
     ):
         raise RuntimePathError(
             f"{source} must be a non-root absolute path without '..' components; "

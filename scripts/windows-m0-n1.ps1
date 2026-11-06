@@ -1,6 +1,6 @@
 param([switch]$BuildFaust, [ValidateSet('Msvc', 'Mingw')][string]$Compiler = 'Msvc')
 $ErrorActionPreference = 'Stop'
-$envNames = @('PYTHONHOME','PYTHONPATH','PYTHONNOUSERSITE','PIP_CACHE_DIR','PIP_CONFIG_FILE','TEMP','TMP','PATH','SOURCE_DATE_EPOCH','LDFLAGS')
+$envNames = @('PYTHONHOME','PYTHONPATH','PYTHONNOUSERSITE','PIP_CACHE_DIR','PIP_CONFIG_FILE','TEMP','TMP','PATH','SOURCE_DATE_EPOCH','LDFLAGS','M0_REAL_GXX','M0_PREFIX_MAP')
 $savedEnv = @{}
 foreach ($name in $envNames) { $savedEnv[$name] = [Environment]::GetEnvironmentVariable($name, 'Process') }
 try {
@@ -54,7 +54,14 @@ if ($BuildFaust) {
         $compilerBin = Join-Path $cache 'mingw64\bin'
         if (-not (Test-Path -LiteralPath $compilerArchive) -or (Get-FileHash -LiteralPath $compilerArchive -Algorithm SHA256).Hash -ne '26788998D615856A915E1EEACB0854FCE87BC608FA9A0C16F96BCBFDCF3415C0') { throw 'Expected verified MinGW archive is missing or changed.' }
         if (-not (Test-Path -LiteralPath (Join-Path $compilerBin 'gcc.exe'))) { throw 'Extract the verified compiler archive into .m0 first.' }
-        $env:PATH = $compilerBin + ';' + $env:PATH
+        $wrapperDir = Join-Path $cache 'gxx-wrapper'
+        $wrapperExe = Join-Path $wrapperDir 'g++.exe'
+        New-Item -ItemType Directory -Force -Path $wrapperDir | Out-Null
+        & (Join-Path $compilerBin 'gcc.exe') -municode -static -O2 -o $wrapperExe (Join-Path $PSScriptRoot 'windows-m0-gxx-wrapper.c')
+        if ($LASTEXITCODE -ne 0) { throw 'Compiler prefix-map wrapper build failed.' }
+        $env:M0_REAL_GXX = Join-Path $compilerBin 'g++.exe'
+        $env:M0_PREFIX_MAP = '-ffile-prefix-map=' + (Join-Path $cache 'python') + '=/cwng-python'
+        $env:PATH = $wrapperDir + ';' + $compilerBin + ';' + $env:PATH
         $env:SOURCE_DATE_EPOCH = '1782160000'
         $env:LDFLAGS = '-Wl,--no-insert-timestamp'
         & (Join-Path $compilerBin 'gcc.exe') --version | Select-Object -First 1

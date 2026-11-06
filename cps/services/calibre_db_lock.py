@@ -31,9 +31,35 @@ from __future__ import annotations
 
 import errno
 import os
+import sqlite3
+import sys
+import threading
 import time
-from contextlib import contextmanager
+from contextvars import ContextVar
+from contextlib import closing, contextmanager
 from pathlib import Path
+from types import ModuleType
+
+# This file is also loaded standalone by calibre_server_guard. Store one
+# context variable in the interpreter's module registry so both loaders see
+# the same held lock, while each thread/greenlet/async task stays separate.
+_new_native_state = ModuleType('_cwng_native_writer_lock_state')
+_new_native_state.held = ContextVar('_cwng_native_writer_lock_held', default=None)
+_native_state = sys.modules.setdefault(_new_native_state.__name__, _new_native_state)
+
+
+def _native_execution_identity():
+    import asyncio
+    try:
+        task = asyncio.current_task()
+    except RuntimeError:
+        task = None
+    try:
+        from greenlet import getcurrent
+        greenlet = getcurrent()
+    except ImportError:
+        greenlet = None
+    return os.getpid(), threading.get_ident(), greenlet, task
 
 try:
     from .parallel import cooperative_sleep
@@ -89,6 +115,67 @@ def _resolve_lock_path(lock_dir: str | None) -> str:
 
 
 @contextmanager
+def _native_controller_gate(lock_files, lock_path, timeout, poll_interval):
+    """Coordinate native writers with the controller-owned worker lease."""
+    if os.name != "nt" or os.environ.get("CWNG_NATIVE_MODE") != "1":
+        yield
+        return
+    if lock_files.msvcrt is None:
+        raise RuntimeError("native writer locking is unavailable")
+    if os.environ.get("CWNG_NATIVE_WRITER_GATE") == "1":
+        # Only a descendant of the named controller job may use its lease.
+        import importlib.util
+        script = Path(__file__).resolve().parents[2] / "scripts" / "windows_m0_job.py"
+        spec = importlib.util.spec_from_file_location("_cwng_native_job_gate", script)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        try:
+            gate_dir = Path(os.environ["CWNG_NATIVE_GATE_DIR"]).resolve(strict=True)
+            same_dir = gate_dir == Path(lock_path).parent.resolve(strict=True)
+            member = module.current_process_in_generation(os.environ["CWNG_NATIVE_HELPER"],
+                                                          os.environ["CWNG_NATIVE_JOB_GENERATION"])
+        except (KeyError, OSError, ValueError) as error:
+            raise RuntimeError("native controller lease cannot be verified") from error
+        if not same_dir or not member:
+            raise RuntimeError("native controller lease is not owned by this worker")
+        yield
+        return
+    fd = lock_files.open_lock(str(Path(lock_path).parent / ".cwng-native-writer.lock"))
+    acquired = False
+    try:
+        deadline = time.monotonic() + timeout
+        while not lock_files.acquire(fd, blocking=False):
+            if time.monotonic() >= deadline:
+                raise TimeoutError("Timed out waiting for the native controller writer lease")
+            cooperative_sleep(poll_interval)
+        acquired = True
+        # A controller crash releases its OS lock before the old job has
+        # necessarily disappeared. Consult durable intent while still holding
+        # the gate so no new controller claim can race this admission.
+        try:
+            state = Path(os.environ["CWNG_NATIVE_STATE_DIR"]).resolve(strict=True)
+            ledger = state / "runtime-ledger.sqlite"
+            if not state.is_dir() or not state.drive or state.drive.startswith("\\\\"):
+                raise ValueError("native state directory must be local")
+            with closing(sqlite3.connect(ledger.as_uri() + "?mode=ro", uri=True, timeout=5)) as connection:
+                if (connection.execute("PRAGMA application_id").fetchone()[0] != 0x43574E47 or
+                        connection.execute("PRAGMA user_version").fetchone()[0] != 1):
+                    raise ValueError("unknown native ledger")
+                unresolved = connection.execute(
+                    "SELECT 1 FROM jobs WHERE state IN ('running', 'review') LIMIT 1"
+                ).fetchone()
+        except (KeyError, OSError, ValueError, sqlite3.Error) as error:
+            raise RuntimeError("native writer recovery state cannot be verified") from error
+        if unresolved:
+            raise RuntimeError("native writer is paused pending recovery")
+        yield
+    finally:
+        if acquired:
+            lock_files.release(fd)
+        os.close(fd)
+
+
+@contextmanager
 def metadata_db_write_lock(
     lock_dir: str | None = None,
     timeout: float = DEFAULT_TIMEOUT_SECONDS,
@@ -122,56 +209,72 @@ def metadata_db_write_lock(
 
     lock_path = _resolve_lock_path(lock_dir)
 
-    # The directory must exist. We deliberately do NOT create the lock
-    # directory on demand — that would mask a misconfiguration (e.g.
-    # configured directory not mounted). If the directory is missing, the
-    # ENOENT-from-open below surfaces clearly.
-    fd = lock_files.open_lock(lock_path, mode=0o644)
-    try:
-        deadline = time.monotonic() + timeout
-        while True:
-            try:
-                if windows_locks is None:
-                    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                elif not windows_locks.acquire(fd, blocking=False):
-                    raise BlockingIOError(errno.EAGAIN, "metadata writer owns the lock")
-                break
-            except OSError as e:
-                if e.errno not in (errno.EWOULDBLOCK, errno.EAGAIN, errno.EACCES):
-                    raise
-                if time.monotonic() >= deadline:
-                    raise TimeoutError(
-                        f"Timed out after {timeout:.1f}s waiting for "
-                        f"metadata.db write lock at {lock_path}. Another "
-                        f"writer (likely calibredb during ingest) is "
-                        f"holding it. If this repeats, check that the "
-                        f"ingest_processor isn't stuck."
-                    ) from e
-                # Cooperative: this poll loop runs on a request greenlet, and
-                # it has no other yield point. A stdlib sleep here parks the
-                # one OS thread every greenlet shares, so the whole app stops
-                # answering for as long as the other writer holds the lock —
-                # up to `timeout` (120s) while ingest runs a calibredb add.
-                cooperative_sleep(poll_interval)
+    native = os.name == 'nt' and os.environ.get('CWNG_NATIVE_MODE') == '1'
+    identity = _native_execution_identity() if native else None
+    canonical = os.path.normcase(os.path.realpath(lock_path)) if native else None
+    held = _native_state.held.get() if native else None
+    if held and held[1] == identity:
+        if held[0] != canonical:
+            raise RuntimeError('cannot nest native writer locks for different directories')
+        yield held[2]
+        return
 
+    with _native_controller_gate(lock_files, lock_path, timeout, poll_interval):
+        # The directory must exist. We deliberately do NOT create the lock
+        # directory on demand — that would mask a misconfiguration (e.g.
+        # configured directory not mounted). If the directory is missing, the
+        # ENOENT-from-open below surfaces clearly.
+        fd = lock_files.open_lock(lock_path, mode=0o644)
         try:
-            # Record holder PID for diagnostics. Best-effort.
+            deadline = time.monotonic() + timeout
+            while True:
+                try:
+                    if windows_locks is None:
+                        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    elif not windows_locks.acquire(fd, blocking=False):
+                        raise BlockingIOError(errno.EAGAIN, "metadata writer owns the lock")
+                    break
+                except OSError as e:
+                    if e.errno not in (errno.EWOULDBLOCK, errno.EAGAIN, errno.EACCES):
+                        raise
+                    if time.monotonic() >= deadline:
+                        raise TimeoutError(
+                            f"Timed out after {timeout:.1f}s waiting for "
+                            f"metadata.db write lock at {lock_path}. Another "
+                            f"writer (likely calibredb during ingest) is "
+                            f"holding it. If this repeats, check that the "
+                            f"ingest_processor isn't stuck."
+                        ) from e
+                    # Cooperative: this poll loop runs on a request greenlet, and
+                    # it has no other yield point. A stdlib sleep here parks the
+                    # one OS thread every greenlet shares, so the whole app stops
+                    # answering for as long as the other writer holds the lock —
+                    # up to `timeout` (120s) while ingest runs a calibredb add.
+                    cooperative_sleep(poll_interval)
+
             try:
-                os.ftruncate(fd, 0)
-                os.write(fd, f"{os.getpid()}\n".encode("utf-8"))
-            except OSError:
-                pass
-            yield fd
+                # Record holder PID for diagnostics. Best-effort.
+                try:
+                    os.ftruncate(fd, 0)
+                    os.write(fd, f"{os.getpid()}\n".encode("utf-8"))
+                except OSError:
+                    pass
+                token = _native_state.held.set((canonical, identity, fd)) if native else None
+                try:
+                    yield fd
+                finally:
+                    if token is not None:
+                        _native_state.held.reset(token)
+            finally:
+                try:
+                    if windows_locks is None:
+                        fcntl.flock(fd, fcntl.LOCK_UN)
+                    else:
+                        windows_locks.release(fd)
+                except OSError:
+                    pass
         finally:
             try:
-                if windows_locks is None:
-                    fcntl.flock(fd, fcntl.LOCK_UN)
-                else:
-                    windows_locks.release(fd)
+                os.close(fd)
             except OSError:
                 pass
-    finally:
-        try:
-            os.close(fd)
-        except OSError:
-            pass

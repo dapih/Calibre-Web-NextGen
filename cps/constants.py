@@ -64,13 +64,20 @@ class RuntimePathError(ValueError):
     """A configured runtime directory is unsafe or cannot name one path."""
 
 
-def _validated_runtime_dir(value, source):
+def _validated_runtime_dir(value, source, _windows=os.name == 'nt', _native_path=os.path):
     """Mirror scripts/app_paths.py's runtime-directory safety contract."""
     configured = value.strip()
     path = Path(configured)
-    normalised = posixpath.normpath(
-        '/' + configured.lstrip('/') if path.is_absolute() else configured
-    )
+    if _windows:
+        normalised = _native_path.normpath(configured)
+        root_equivalent = bool(path.anchor) and (
+            _native_path.normcase(normalised) == _native_path.normcase(_native_path.normpath(path.anchor))
+        )
+    else:
+        normalised = posixpath.normpath(
+            '/' + configured.lstrip('/') if path.is_absolute() else configured
+        )
+        root_equivalent = normalised == '/'
     if (
         not configured
         or '\x00' in configured
@@ -78,7 +85,7 @@ def _validated_runtime_dir(value, source):
         or '\r' in configured
         or not path.is_absolute()
         or '..' in path.parts
-        or normalised == '/'
+        or root_equivalent
     ):
         raise RuntimePathError(
             f"{source} must be a non-root absolute path without '..' components; "

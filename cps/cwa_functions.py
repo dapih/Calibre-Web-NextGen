@@ -392,6 +392,15 @@ def refresh_library(app):
 @library_refresh.route("/cwa-library-refresh", methods=["GET", "POST"])
 @login_required_if_no_ano
 def cwa_library_refresh():
+    if os.name == 'nt' and os.environ.get('CWNG_NATIVE_MODE') == '1':
+        try:
+            result = _native_conversion_request('refresh-ingest')
+            if not isinstance(result.get('job_id'), str):
+                raise ValueError('controller did not accept library refresh')
+        except (OSError, RuntimeError, ValueError, KeyError) as error:
+            log.error('Native library refresh could not be queued: %s', error)
+            return jsonify({'message': _('Library refresh is unavailable; check the controller status.')}), 503
+        return jsonify({'message': _('Library refresh queued.'), 'job_id': result['job_id']}), 200
     print("[library-refresh] Library refresh manually triggered by user...", flush=True)
     app = current_app._get_current_object()  # Get actual app instance
 
@@ -1176,8 +1185,10 @@ def set_cwa_settings():
                     from .progress_syncing.settings import is_koreader_sync_enabled
                     if is_koreader_sync_enabled():
                         try:
-                            with calibre_db.engine.connect() as conn:
-                                ensure_calibre_db_tables(conn)
+                            from .services.calibre_db_lock import metadata_db_write_lock
+                            with metadata_db_write_lock():
+                                with calibre_db.engine.connect() as conn:
+                                    ensure_calibre_db_tables(conn)
                         except Exception as e:
                             log.error(f"Failed to initialize KOReader checksum tables: {e}")
 
@@ -2304,6 +2315,16 @@ def download_current_log(log_filename):
 @login_required_if_no_ano
 @admin_required
 def start_conversion():
+    if os.name == 'nt' and os.environ.get('CWNG_NATIVE_MODE') == '1':
+        try:
+            result = _native_conversion_request('convert-library')
+            if not isinstance(result.get('job_id'), str):
+                raise ValueError('controller did not accept conversion')
+            flash(_("Library conversion queued."), category="success")
+        except (OSError, RuntimeError, ValueError, KeyError) as error:
+            log.error("Native conversion could not be queued: %s", error)
+            flash(_("Library conversion could not be queued."), category="error")
+        return redirect(url_for('convert_library.show_convert_library_page'))
     # Wipe conversion log from previous runs
     open(_service_log_path("convert-library.log"), 'w').close()
     # Remove any left over kill file
@@ -2325,14 +2346,40 @@ def start_conversion():
 @login_required_if_no_ano
 @admin_required
 def cancel_convert_library():
+    if os.name == 'nt' and os.environ.get('CWNG_NATIVE_MODE') == '1':
+        try:
+            _native_conversion_request('cancel-convert-library')
+        except (OSError, RuntimeError, ValueError, KeyError) as error:
+            log.error("Native conversion could not be cancelled: %s", error)
+            flash(_("Library conversion could not be cancelled."), category="error")
+        return redirect(url_for('convert_library.show_convert_library_page'))
     # Create kill trigger file
     open(tempfile.gettempdir() + "/.kill_convert_library_trigger", 'w').close()
     return redirect(url_for('convert_library.show_convert_library_page'))
+
+
+def _native_conversion_request(operation, *, book_id=None):
+    """Submit through the per-user owner rather than spawning a raw writer."""
+    # load_cwa_db() above establishes the application's scripts import path.
+    from windows_m0_client import request_action
+    return request_action(os.environ['CWNG_NATIVE_STATE_DIR'], operation, book_id=book_id)
 
 @convert_library.route('/convert-library-status', methods=["GET"])
 @login_required_if_no_ano
 @admin_required
 def get_status():
+    if os.name == 'nt' and os.environ.get('CWNG_NATIVE_MODE') == '1':
+        try:
+            job = _native_conversion_request('conversion-status').get('job')
+            status = _read_log_tail(_service_log_path('convert-library.log'))
+            if job:
+                status += '\nConversion state: ' + job['state']
+                if job.get('evidence'):
+                    status += ' (' + job['evidence'] + ')'
+            return jsonify({'status': status, 'progress': extract_progress(status), 'job': job})
+        except (OSError, RuntimeError, ValueError, KeyError) as error:
+            log.error('Native conversion status unavailable: %s', error)
+            return jsonify({'status': 'Conversion status unavailable.', 'progress': 0, 'job': None}), 503
     return _service_status("convert-library.log")
 
 
@@ -2447,6 +2494,14 @@ def download_current_log(log_filename):
 @login_required_if_no_ano
 @admin_required
 def start_epub_fixer():
+    if os.name == 'nt' and os.environ.get('CWNG_NATIVE_MODE') == '1':
+        try:
+            _native_conversion_request('epub-fixer')
+            flash(_("EPUB repair queued."), category="success")
+        except (OSError, RuntimeError, ValueError, KeyError) as error:
+            log.error('Native EPUB repair could not be queued: %s', error)
+            flash(_("EPUB repair could not be queued."), category="error")
+        return redirect(url_for('epub_fixer.show_epub_fixer_page'))
     # Wipe conversion log from previous runs
     open(_service_log_path("epub-fixer.log"), 'w').close()
     # Remove any left over kill file
@@ -2478,6 +2533,14 @@ def run_epub_fixer_for_book():
         book_id = int(book_id)
     except (TypeError, ValueError):
         return jsonify({"success": False, "error": _("Invalid book selection.")}), 400
+
+    if os.name == 'nt' and os.environ.get('CWNG_NATIVE_MODE') == '1':
+        try:
+            result = _native_conversion_request('epub-fixer', book_id=book_id)
+            return jsonify({'success': True, 'message': _('EPUB repair queued.'), 'job_id': result['job_id']})
+        except (OSError, RuntimeError, ValueError, KeyError) as error:
+            log.error('Native EPUB repair could not be queued: %s', error)
+            return jsonify({'success': False, 'error': _('EPUB repair could not be queued.')}), 503
 
     try:
         calibre_db.ensure_session()
@@ -2517,6 +2580,13 @@ def run_epub_fixer_for_book():
 @login_required_if_no_ano
 @admin_required
 def cancel_epub_fixer():
+    if os.name == 'nt' and os.environ.get('CWNG_NATIVE_MODE') == '1':
+        try:
+            _native_conversion_request('cancel-epub-fixer')
+        except (OSError, RuntimeError, ValueError, KeyError) as error:
+            log.error('Native EPUB repair could not be cancelled: %s', error)
+            flash(_("EPUB repair could not be cancelled."), category="error")
+        return redirect(url_for('epub_fixer.show_epub_fixer_page'))
     # Create kill trigger file
     open(tempfile.gettempdir() + "/.kill_epub_fixer_trigger", 'w').close()
     try:
@@ -2533,6 +2603,18 @@ def cancel_epub_fixer():
 @login_required_if_no_ano
 @admin_required
 def get_status():
+    if os.name == 'nt' and os.environ.get('CWNG_NATIVE_MODE') == '1':
+        try:
+            job = _native_conversion_request('epub-fixer-status').get('job')
+            status = _read_log_tail(_service_log_path('epub-fixer.log'))
+            if job:
+                status += '\nEPUB repair state: ' + job['state']
+                if job.get('evidence'):
+                    status += ' (' + job['evidence'] + ')'
+            return jsonify({'status': status, 'progress': extract_progress(status), 'job': job})
+        except (OSError, RuntimeError, ValueError, KeyError) as error:
+            log.error('Native EPUB repair status unavailable: %s', error)
+            return jsonify({'status': 'EPUB repair status unavailable.', 'progress': 0, 'job': None}), 503
     return _service_status("epub-fixer.log")
 
 
@@ -2815,6 +2897,15 @@ def start_cover_enforcer():
     # Claim the run BEFORE truncating the log or spawning anything. cover_enforcer.py's
     # own lockfile is cross-process protection for the work itself, but it refuses too
     # late to stop a second click from wiping the live run's log out from under it.
+    if os.name == 'nt' and os.environ.get('CWNG_NATIVE_MODE') == '1':
+        try:
+            job = _native_conversion_request('manual-enforce').get('job_id')
+            if not isinstance(job, str):
+                raise ValueError('controller did not accept enforcement')
+            return jsonify({'started': True, 'job_id': job})
+        except (OSError, RuntimeError, ValueError, KeyError) as error:
+            log.error('Native manual enforcement could not be queued: %s', error)
+            return jsonify({'started': False, 'message': _('Manual enforcement is unavailable.')}), 503
     with _cover_enforcer_lock:
         if _cover_enforcer_run['active']:
             return jsonify({'started': False,
@@ -2854,6 +2945,13 @@ def cancel_cover_enforcer():
     # a bounded wait, so the request returns immediately instead of doing process control
     # inline. The `pkill -f` this replaces matched on the script PATH, so it also killed a
     # run started from the CLI that this UI never owned.
+    if os.name == 'nt' and os.environ.get('CWNG_NATIVE_MODE') == '1':
+        try:
+            result = _native_conversion_request('cancel-manual-enforce')
+            return jsonify({'cancelling': bool(result.get('cancelled'))})
+        except (OSError, RuntimeError, ValueError, KeyError) as error:
+            log.error('Native manual enforcement could not be cancelled: %s', error)
+            return jsonify({'cancelling': False, 'message': _('Manual enforcement is unavailable.')}), 503
     open(tempfile.gettempdir() + "/.kill_cover_enforcer_trigger", 'w').close()
     return jsonify({'cancelling': True})
 
@@ -2861,6 +2959,16 @@ def cancel_cover_enforcer():
 @login_required_if_no_ano
 @admin_required
 def get_status():
+    if os.name == 'nt' and os.environ.get('CWNG_NATIVE_MODE') == '1':
+        try:
+            job = _native_conversion_request('manual-enforce-status').get('job')
+            state = job['state'] if job else 'idle'
+            detail = job.get('evidence') if job else None
+            return jsonify({'status': 'Enforcement: ' + state + (': ' + detail if detail else ''),
+                            'progress': 100 if state == 'completed' else 0, 'job': job})
+        except (OSError, RuntimeError, ValueError, KeyError) as error:
+            log.error('Native manual enforcement status unavailable: %s', error)
+            return jsonify({'status': 'Enforcement unavailable', 'progress': 0}), 503
     return _service_status("cover-enforcer.log")
 
 

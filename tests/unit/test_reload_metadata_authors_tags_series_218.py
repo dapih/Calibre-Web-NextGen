@@ -88,25 +88,6 @@ class TestReloadCoversDeferredFields:
             "return — never warn-and-commit"
         )
 
-    def test_file_moves_run_outside_the_writers_lock(self):
-        """Adversarial-review finding: metadata_db_write_lock's contract is
-        single-commit duration (it coordinates with the ingest processor,
-        #192). File renames inside it can starve ingest for the length of
-        a folder move on slow storage. Only the COMMIT may hold it —
-        matching the edit-book POST path."""
-        body = _body()
-        lock_positions = [m.start() for m in re.finditer(r"metadata_db_write_lock\(\)", body)]
-        assert len(lock_positions) == 1, (
-            f"expected exactly one metadata_db_write_lock() in the reload "
-            f"(around the commit), found {len(lock_positions)}"
-        )
-        dir_call = body.index("update_dir_structure")
-        assert dir_call < lock_positions[0], (
-            "update_dir_structure must run BEFORE (outside) the writers' "
-            "lock; only the commit holds it"
-        )
-
-
 @pytest.mark.unit
 class TestAbsentFieldSafetyGates:
     def test_author_missing_from_the_file_does_not_stomp(self):

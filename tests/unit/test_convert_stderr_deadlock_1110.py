@@ -138,7 +138,7 @@ class TestStreamProcessOutput(unittest.TestCase):
         _run_with_watchdog(lambda: stream_process_output(p, seen.append))
 
         self.assertEqual(p.returncode, 0)
-        self.assertEqual(seen, [b'100% done\n'])
+        self.assertEqual(seen, [('100% done' + os.linesep).encode()])
 
 
 class TestProcessWait(unittest.TestCase):

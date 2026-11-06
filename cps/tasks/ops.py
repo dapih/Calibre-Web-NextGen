@@ -17,6 +17,33 @@ from cps import constants, logger, helper
 log = logger.create()
 
 
+def _run_native_job(task, operation, cancel_operation):
+    """Report the durable outcome rather than trusting a child log marker."""
+    from windows_m0_client import request_action
+    try:
+        state = os.environ['CWNG_NATIVE_STATE_DIR']
+        job_id = request_action(state, operation)['job_id']
+        while True:
+            if task.stat in (STAT_CANCELLED, STAT_ENDED):
+                request_action(state, cancel_operation)
+                return
+            job = request_action(state, 'job-status', job_id=job_id)['job']
+            if not job:
+                raise RuntimeError('native job disappeared')
+            if job['state'] == 'review':
+                task._handleError('The operation requires review before it can continue.')
+                return
+            if job['state'] == 'completed':
+                if job.get('evidence') == 'cancelled before launch':
+                    task._handleError('The operation was cancelled before it started.')
+                else:
+                    task._handleSuccess()
+                return
+            time.sleep(.5)
+    except (OSError, ValueError, KeyError, RuntimeError) as error:
+        task._handleError('Native operation unavailable: {}'.format(error))
+
+
 class TaskConvertLibraryRun(CalibreTask):
     """Lightweight wrapper to surface Convert Library run in Tasks UI.
 
@@ -30,6 +57,8 @@ class TaskConvertLibraryRun(CalibreTask):
         self._finished_marker = "NextGen Convert Library Service - Run Ended: "
 
     def run(self, worker_thread):
+        if os.name == 'nt' and os.environ.get('CWNG_NATIVE_MODE') == '1':
+            return _run_native_job(self, 'convert-library', 'cancel-convert-library')
         # trigger run via internal route
         try:
             import requests
@@ -101,6 +130,8 @@ class TaskEpubFixerRun(CalibreTask):
         self._finished_marker = "NextGen Kindle EPUB Fixer Service - Run Ended: "
 
     def run(self, worker_thread):
+        if os.name == 'nt' and os.environ.get('CWNG_NATIVE_MODE') == '1':
+            return _run_native_job(self, 'epub-fixer', 'cancel-epub-fixer')
         # trigger run via internal route
         try:
             import requests

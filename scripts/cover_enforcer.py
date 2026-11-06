@@ -12,7 +12,8 @@ import re
 import shutil
 import sqlite3
 import subprocess
-from calibre_library_target import library_target, calibredb_command, operation, offline_library_access
+from calibre_library_target import (library_target, calibredb_command, operation, offline_library_access,
+                                    private_tool, require_native_writer_lease)
 import sys
 import tempfile
 import time
@@ -190,7 +191,20 @@ def _lock_owner(path: str):
     return int(recorded) if recorded.isdigit() else None
 
 
+_windows_lock_holder = None
+
+
 def removeLock():
+    global _windows_lock_holder
+    if os.name == "nt":
+        if _windows_lock_holder is not None:
+            lock_files, fd = _windows_lock_holder
+            _windows_lock_holder = None
+            try:
+                lock_files.release(fd)
+            finally:
+                os.close(fd)
+        return
     # Tolerant on purpose: cwa-init sweeps /tmp/*.lock at container start, so the
     # file can legitimately be gone by the time atexit runs.
     try:
@@ -210,7 +224,27 @@ def _acquire_lock_or_exit():
     The pid is written to a temp file and hard-linked into place, so the lock
     never exists in a readable-but-empty state for another run to misjudge.
     """
+    global _windows_lock_holder
     path = _lock_path()
+    if os.name == "nt":
+        # Windows releases the OS byte-range lock when this process exits;
+        # never unlink the shared lock file while another process can open it.
+        import importlib.util
+        lock_path = Path(__file__).resolve().parents[1] / "cps" / "services" / "file_lock.py"
+        spec = importlib.util.spec_from_file_location("_cwng_enforcer_file_lock", lock_path)
+        lock_files = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(lock_files)
+        fd = lock_files.open_lock(path)
+        try:
+            if not lock_files.acquire(fd, blocking=False):
+                print("[cover-metadata-enforcer] Another enforcer is running", flush=True)
+                raise SystemExit(2)
+        except BaseException:
+            os.close(fd)
+            raise
+        _windows_lock_holder = (lock_files, fd)
+        atexit.register(removeLock)
+        return
     staging = f"{path}.{os.getpid()}"
 
     for _ in range(2):
@@ -908,7 +942,7 @@ class Enforcer:
                 staged_kepub = None
                 write_completed = False
                 if lower_name.endswith(".kepub") or lower_name.endswith(".kepub.epub"):
-                    tool = 'ebook-meta'
+                    tool = private_tool('ebook-meta')
                     cmd = [tool, file, '--from-opf', book.new_metadata_path]
 
                     try:
@@ -999,7 +1033,7 @@ class Enforcer:
                     if cmd is not None and Path(book.cover_path).exists():
                         cmd += ['--cover', book.cover_path]
                 else:
-                    tool = 'ebook-polish'
+                    tool = private_tool('ebook-polish')
                     if Path(book.cover_path).exists():
                         cmd = [tool, '-c', book.cover_path, '-o', book.new_metadata_path, '-U', file, file]
                     else:
@@ -1148,7 +1182,7 @@ class Enforcer:
         'Cover-file is not a valid image file, or could not be stored'. The metadata-change
         dispatcher runs the enforcer as the app user, so this only acts when run as root.
         """
-        if os.geteuid() != 0:
+        if getattr(os, "geteuid", lambda: -1)() != 0:
             return
         try:
             uid = int(os.environ.get("PUID", "1000"))
@@ -1406,6 +1440,9 @@ def main():
     parser.add_argument('-paths', '-p', action='store_true', dest='paths', help="Use with '-history' flag to display stored paths of all files in enforcement database", default=False)
     parser.add_argument('-v', '--verbose', action='store_true', dest='verbose', help="Use with history to display entire enforcement history instead of only the most recent 10 entries", default=False)
     args = parser.parse_args()
+
+    if args.log is not None or args.dir is not None or args.all:
+        require_native_writer_lease()
 
     enforcer = Enforcer(args)
 

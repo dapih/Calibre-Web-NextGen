@@ -58,6 +58,7 @@ from .services import (
     cover_design_presets, cover_designer_cache, cover_extract, cover_generator, cover_preview,
     cover_picker as cover_picker_svc, cover_url_validator,
 )
+from .services.calibre_db_lock import metadata_db_write_lock
 from .usermanagement import user_login_required
 
 
@@ -362,6 +363,7 @@ def cover_picker_extract(book_id):
 @cover_picker.route("/book/<int:book_id>/cover/apply", methods=["POST"])
 @user_login_required
 @edit_required
+@metadata_db_write_lock()
 def cover_picker_apply(book_id):
     """Apply a chosen cover. Accepts a JSON payload describing the
     source: a remote URL, a candidate from the grid (just a URL really),

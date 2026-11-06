@@ -41,7 +41,8 @@ def store_checksum(
     book_format: str,
     checksum: str,
     version: str = CHECKSUM_VERSION,
-    db_connection=None
+    db_connection=None,
+    *, _metadata_lock_held=False,
 ) -> bool:
     """
     Store a checksum in the database with history tracking.
@@ -63,6 +64,12 @@ def store_checksum(
         >>> store_checksum(123, 'EPUB', 'abc123...')
         True
     """
+    if (os.name == 'nt' and os.environ.get('CWNG_NATIVE_MODE') == '1' and
+            db_connection is None and not _metadata_lock_held):
+        from ...services.calibre_db_lock import metadata_db_write_lock
+        with metadata_db_write_lock():
+            return store_checksum(book_id, book_format, checksum, version, db_connection,
+                                  _metadata_lock_held=True)
     try:
         from sqlalchemy import text
 
@@ -139,7 +146,7 @@ def store_checksum(
         return False
 
 
-def store_filename_checksums(names, db_connection=None) -> int:
+def store_filename_checksums(names, db_connection=None, *, _metadata_lock_held=False) -> int:
     """Register the filename-matching digest of each ``(book_id, format, name)``.
 
     A device in filename document matching identifies a book by the MD5 of the
@@ -151,6 +158,11 @@ def store_filename_checksums(names, db_connection=None) -> int:
 
     Returns how many digests were added.
     """
+    if (os.name == 'nt' and os.environ.get('CWNG_NATIVE_MODE') == '1' and
+            db_connection is None and not _metadata_lock_held):
+        from ...services.calibre_db_lock import metadata_db_write_lock
+        with metadata_db_write_lock():
+            return store_filename_checksums(names, db_connection, _metadata_lock_held=True)
     from sqlalchemy import text
 
     wanted = {}

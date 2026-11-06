@@ -50,6 +50,7 @@ from ...services import (device_capabilities, device_delivery,
                          device_reading_position as device_positions)
 from ...services.place_arbiter import Report, report_wins
 from ...services.share_place import gates_enforced
+from ...services.calibre_db_lock import metadata_db_write_lock
 from ...kobo import push_reading_state_to_hardcover
 
 from flask import Blueprint, g, has_request_context, request, jsonify, send_from_directory
@@ -808,6 +809,7 @@ def update_book_read_status(user, book_id: int, percentage: float, *,
     return outcome
 
 
+@metadata_db_write_lock()
 def _mark_custom_read_column(book_id: int) -> None:
     """Set the configured Calibre custom read-column for ``book_id`` to truthy.
 

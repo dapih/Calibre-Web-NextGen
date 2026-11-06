@@ -358,6 +358,8 @@ def _load_duplicates_module(delete_key_calls, *, user_data_commit_result=True):
         },
     )
     _install_stub("cps.services")
+    from contextlib import nullcontext
+    _install_stub("cps.services.calibre_db_lock", {"metadata_db_write_lock": nullcontext})
     _install_stub("cps.editbooks", {"delete_whole_book": lambda book_id, book: calls.append(("whole", book_id))})
     _install_stub(
         "cps.duplicate_index",

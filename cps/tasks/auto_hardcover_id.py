@@ -13,6 +13,7 @@ from typing import List, Optional
 
 from cps import config, db, logger, ub
 from cps.services.worker import CalibreTask, STAT_FAIL, STAT_FINISH_SUCCESS, STAT_CANCELLED, STAT_ENDED
+from cps.services.calibre_db_lock import metadata_db_write_lock
 from flask_babel import lazy_gettext as N_
 from sqlalchemy import exc as sa_exc
 from sqlalchemy.orm import selectinload
@@ -385,6 +386,7 @@ class TaskAutoHardcoverID(CalibreTask):
                     "because it was rejected while auto-fetch was running"
                 )
 
+    @metadata_db_write_lock()
     def _apply_hardcover_id(self, book_id: int, result):
         """Apply Hardcover identifiers to a book"""
         try:

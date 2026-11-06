@@ -704,6 +704,12 @@ def set_read_status(user, book_id, status):
 
 def _clear_custom_read_column(book_id, read_column):
     """Un-finish a book in the Calibre read column, leaving its position alone."""
+    from .calibre_db_lock import metadata_db_write_lock
+    with metadata_db_write_lock():
+        return _clear_custom_read_column_locked(book_id, read_column)
+
+
+def _clear_custom_read_column_locked(book_id, read_column):
     from sqlalchemy.exc import InvalidRequestError, OperationalError
     from .. import calibre_db
     try:

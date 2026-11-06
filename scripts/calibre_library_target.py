@@ -40,7 +40,31 @@ LibraryTarget = _policy.LibraryTarget
 library_id = _policy.library_id
 connect_host = _policy.connect_host
 server_target = _policy.server_target
-calibredb_command = _policy.calibredb_command
+def private_tool(name):
+    """Resolve native tools to their configured private files, never PATH/CWD."""
+    if os.name != 'nt' or os.environ.get('CWNG_NATIVE_MODE') != '1':
+        return name
+    if name == 'kepubify':
+        value = os.environ.get('CWNG_KEPUBIFY_PATH', '')
+        path = Path(value)
+    else:
+        if name not in {'calibredb', 'calibre-debug', 'ebook-convert', 'ebook-meta', 'ebook-polish'}:
+            raise ValueError('unknown native tool')
+        value = os.environ.get('CWNG_CALIBRE_TOOLS', '')
+        directory = Path(value)
+        if not value or not directory.is_absolute():
+            raise ValueError('private Calibre directory is required')
+        path = directory / (name + '.exe')
+    if not value or not path.is_absolute() or not path.is_file():
+        raise FileNotFoundError('private native tool is unavailable: ' + name)
+    return str(path.resolve(strict=True))
+
+
+def calibredb_command(command, target):
+    command = list(command)
+    if command and command[0] == 'calibredb':
+        command[0] = private_tool('calibredb')
+    return _policy.calibredb_command(command, target)
 path_is_available = _policy.path_is_available
 _guard = importlib.util.spec_from_file_location("_cwng_server_guard", _policy_path.with_name("calibre_server_guard.py"))
 ownership = importlib.util.module_from_spec(_guard)
@@ -63,8 +87,31 @@ _offline_writer_fd = ContextVar("calibre_offline_writer_fd", default=None)
 
 
 def offline_child_ownership():
+    if os.name == "nt" and os.environ.get("CWNG_NATIVE_MODE") == "1":
+        try:
+            from windows_m0_job import current_process_in_generation
+            member = current_process_in_generation(os.environ["CWNG_NATIVE_HELPER"],
+                                                   os.environ["CWNG_NATIVE_JOB_GENERATION"])
+        except (ImportError, KeyError, OSError, ValueError) as error:
+            raise LibraryBusyError("Native writer job membership could not be verified") from error
+        if not member:
+            raise LibraryBusyError("Native writer is outside the controller job")
     fds = tuple(fd for fd in (_offline_owner_fd.get(), _offline_writer_fd.get()) if fd is not None)
     return {"pass_fds": fds} if fds and os.name != "nt" else {}
+
+
+def require_native_writer_lease():
+    """Refuse native standalone mutators outside the controller's writer job."""
+    if os.name != "nt" or os.environ.get("CWNG_NATIVE_MODE") != "1":
+        return
+    try:
+        configured = Path(os.environ["CWA_METADATA_LOCK_DIR"]).resolve(strict=True)
+        leased = Path(os.environ["CWNG_NATIVE_GATE_DIR"]).resolve(strict=True)
+        if os.environ.get("CWNG_NATIVE_WRITER_GATE") != "1" or configured != leased:
+            raise ValueError("missing or mismatched writer gate")
+        offline_child_ownership()
+    except (KeyError, OSError, ValueError) as error:
+        raise LibraryBusyError("Native mutation requires the coordinator writer lease") from error
 
 
 @contextmanager

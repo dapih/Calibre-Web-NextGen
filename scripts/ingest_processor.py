@@ -13,19 +13,29 @@ import subprocess
 import sys
 from calibre_library_target import (library_target, calibredb_command, operation,
                                     offline_library_operation, offline_library_access, offline_child_ownership,
-                                    offline_writer_ownership, LibraryBusyError, check_maintenance)
+                                    offline_writer_ownership, LibraryBusyError, check_maintenance, private_tool,
+                                    require_native_writer_lease)
 import tempfile
 import time
 import shutil
 import signal
 import sqlite3
-import fcntl
 import threading
 from datetime import datetime
 from pathlib import Path
 
 import app_paths
 import service_user
+
+try:
+    import fcntl
+except ImportError:  # Windows
+    fcntl = None
+
+try:
+    import msvcrt
+except ImportError:  # POSIX
+    msvcrt = None
 
 # cwa_db / kindle_epub_fixer / audiobook / requests are loaded lazily by
 # initialize_runtime() (CWA #1349 by @navels) so the ingest-service can
@@ -191,7 +201,7 @@ DUPLICATE_FULL_SCAN_WAIT_INTERVAL_SECONDS = 2
 DUPLICATE_FULL_SCAN_WAIT_TIMEOUT_SECONDS = int(os.environ.get("CWA_DUPLICATE_FULL_SCAN_WAIT_TIMEOUT_SECONDS", "7200"))
 
 class ProcessLock:
-    """Process lock using flock for ownership and the PID for diagnostics."""
+    """Process lock using an OS lock for ownership and the PID for diagnostics."""
 
     def __init__(self, lock_name="ingest_processor"):
         self.lock_name = lock_name
@@ -215,7 +225,7 @@ class ProcessLock:
                 if not lock_existed:
                     try:
                         os.fchmod(lock_fd, 0o666)
-                    except OSError:
+                    except (AttributeError, OSError):
                         pass
             self.lock_file = os.fdopen(lock_fd, 'r+' if lock_writable else 'r')
 
@@ -223,7 +233,13 @@ class ProcessLock:
             start_time = time.time()
             while time.time() - start_time < timeout:
                 try:
-                    fcntl.flock(self.lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    if fcntl is not None:
+                        fcntl.flock(self.lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    elif msvcrt is not None:
+                        self.lock_file.seek(0)
+                        msvcrt.locking(self.lock_file.fileno(), msvcrt.LK_NBLCK, 1)
+                    else:
+                        raise RuntimeError("No supported process lock backend")
 
                     # Successfully acquired lock. Replace the diagnostic PID
                     # only when this user can write the persistent inode.
@@ -238,7 +254,7 @@ class ProcessLock:
                     return True
 
                 except (IOError, OSError):
-                    # The flock is authoritative. PID text is only diagnostic;
+                    # The OS lock is authoritative. PID text is only diagnostic;
                     # invalid text cannot make a contended lock stale.
                     time.sleep(0.1)  # Brief wait before retry
 
@@ -268,7 +284,13 @@ class ProcessLock:
         """Release the lock"""
         if self.acquired and self.lock_file:
             try:
-                fcntl.flock(self.lock_file.fileno(), fcntl.LOCK_UN)
+                if fcntl is not None:
+                    fcntl.flock(self.lock_file.fileno(), fcntl.LOCK_UN)
+                elif msvcrt is not None:
+                    self.lock_file.seek(0)
+                    msvcrt.locking(self.lock_file.fileno(), msvcrt.LK_UNLCK, 1)
+                else:
+                    raise RuntimeError("No supported process lock backend")
                 self.lock_file.close()
                 self.lock_file = None
 
@@ -552,9 +574,9 @@ def _acquire_process_lock_or_exit():
     process_lock lazily. If initialize_runtime() fails (e.g. missing
     heavy dependencies in a test environment), bail with exit code 2."""
     atexit.register(cleanup_lock)
-    if not initialize_runtime():
-        sys.exit(2)
-    if process_lock is None or not process_lock.acquire(timeout=10):
+    # initialize_runtime already acquires the process lock. Opening and
+    # acquiring it a second time contends with our own first handle.
+    if not initialize_runtime() or process_lock is None or not process_lock.acquired:
         sys.exit(2)
 
 
@@ -1820,7 +1842,7 @@ class NewBookProcessor:
         target_filepath = f"{self.tmp_conversion_dir}{original_filepath.stem}.{end_format}"
         try:
             t_convert_book_start = time.time()
-            _run_converter_streaming(['ebook-convert', self.filepath, target_filepath],
+            _run_converter_streaming([private_tool('ebook-convert'), self.filepath, target_filepath],
                                      env=self.calibre_env,
                                      timeout=conversion_budget_remaining())
             t_convert_book_end = time.time()
@@ -1912,7 +1934,7 @@ class NewBookProcessor:
             converted_filepath = Path(converted_filepath)
             target_filepath = f"{self.tmp_conversion_dir}{converted_filepath.stem}.kepub"
             try:
-                subprocess.run(['kepubify', '--inplace', '--calibre', '--output', self.tmp_conversion_dir, converted_filepath], check=True,
+                subprocess.run([private_tool('kepubify'), '--inplace', '--calibre', '--output', self.tmp_conversion_dir, converted_filepath], check=True,
                                timeout=conversion_budget_remaining())
                 if self.cwa_settings['auto_backup_conversions']:
                     self.backup(self.filepath, backup_type="converted")
@@ -1965,7 +1987,14 @@ class NewBookProcessor:
             if os.path.isdir(parent_dir) and os.path.exists(parent_dir):
                 try:
                     if os.path.exists(self.ingest_folder) and os.path.normpath(parent_dir) != self.ingest_folder:
-                        subprocess.run(["find", parent_dir, "-type", "d", "-empty", "-delete"], check=False)
+                        if os.name == 'nt' and os.environ.get('CWNG_NATIVE_MODE') == '1':
+                            for directory, _, _ in os.walk(parent_dir, topdown=False, followlinks=False):
+                                try:
+                                    os.rmdir(directory)
+                                except OSError:
+                                    pass  # Nonempty or unavailable directories are retained.
+                        else:
+                            subprocess.run(["find", parent_dir, "-type", "d", "-empty", "-delete"], check=False)
                 except Exception as e:
                     print(f"[ingest-processor] WARN: Failed pruning empty folders for {parent_dir}: {e}", flush=True)
         except Exception as e:
@@ -2076,7 +2105,7 @@ class NewBookProcessor:
     ) -> list[str]:
         helper = Path(__file__).with_name("calibre_ingest_transaction.py")
         command = [
-            "calibre-debug", "-e", str(helper), "--",
+            private_tool("calibre-debug"), "-e", str(helper), "--",
             "--action", action,
             "--library-path", self.library_dir,
             "--path", str(staged_path),
@@ -2156,11 +2185,13 @@ class NewBookProcessor:
                 if text:
                     output_path = Path(sanity_dir) / "validated.epub"
                     subprocess.run(
-                        ["ebook-convert", str(staged_path), str(output_path)],
+                        [private_tool("ebook-convert"), str(staged_path), str(output_path)],
                         env=self.calibre_env,
                         check=True,
                         capture_output=True,
                         text=True,
+                        encoding='utf-8',
+                        errors='replace',
                         timeout=sanity_timeout,
                     )
                     return output_path.is_file() and output_path.stat().st_size > 0
@@ -2173,7 +2204,7 @@ class NewBookProcessor:
                     "raise SystemExit(0 if audio is not None and duration > 0 else 1)"
                 )
                 result = subprocess.run(
-                    [sys.executable, "-c", probe, str(staged_path)],
+                    [sys.executable, *( ["-I"] if os.name == "nt" and os.environ.get("CWNG_NATIVE_MODE") == "1" else [] ), "-c", probe, str(staged_path)],
                     check=True,
                     capture_output=True,
                     text=True,
@@ -2191,6 +2222,30 @@ class NewBookProcessor:
 
     @staticmethod
     def _fsync_directory(path: Path) -> None:
+        if os.name == "nt":
+            import ctypes
+            from ctypes import wintypes
+
+            kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+            kernel.CreateFileW.argtypes = [
+                wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, ctypes.c_void_p,
+                wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE,
+            ]
+            kernel.CreateFileW.restype = wintypes.HANDLE
+            kernel.FlushFileBuffers.argtypes = [wintypes.HANDLE]
+            kernel.FlushFileBuffers.restype = wintypes.BOOL
+            kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+            kernel.CloseHandle.restype = wintypes.BOOL
+            # A directory requires BACKUP_SEMANTICS and write access to flush.
+            handle = kernel.CreateFileW(str(path), 0x40000000, 7, None, 3, 0x02000000, None)
+            if handle == ctypes.c_void_p(-1).value:
+                raise ctypes.WinError(ctypes.get_last_error())
+            try:
+                if not kernel.FlushFileBuffers(handle):
+                    raise ctypes.WinError(ctypes.get_last_error())
+            finally:
+                kernel.CloseHandle(handle)
+            return
         directory_fd = os.open(path, os.O_RDONLY | os.O_DIRECTORY)
         try:
             os.fsync(directory_fd)
@@ -2248,7 +2303,7 @@ class NewBookProcessor:
                 shutil.copy2(existing_path, destination)
                 if _sha256_file(destination) != source_digest:
                     raise OSError(f"digest mismatch preserving {existing_path}")
-                with destination.open("rb") as preserved_file:
+                with destination.open("r+b" if os.name == "nt" else "rb") as preserved_file:
                     os.fsync(preserved_file.fileno())
                 self._overwrite_recovery_pairs.append((existing_path, destination))
             self._fsync_directory(recovery_dir)
@@ -2284,7 +2339,7 @@ class NewBookProcessor:
                     shutil.copy2(preserved_path, restore_path)
                     if _sha256_file(restore_path) != expected_digest:
                         raise OSError(f"digest mismatch restoring {existing_path}")
-                    with restore_path.open("rb") as restored_file:
+                    with restore_path.open("r+b" if os.name == "nt" else "rb") as restored_file:
                         os.fsync(restored_file.fileno())
                     os.replace(restore_path, existing_path)
                     self._fsync_directory(existing_path.parent)
@@ -3196,6 +3251,11 @@ def _truncate_overlong_ingest_name(filepath, max_length=150):
 def main(filepath=None):
     """Checks if filepath is a directory. If it is, main will be ran on every file in the given directory
     Inotifywait won't detect files inside folders if the folder was moved rather than copied"""
+
+    # Native inputs may be renamed, converted or consumed before the raw
+    # Calibre child is reached. Require the controller's lease at entry, not
+    # merely at that later child-launch boundary.
+    require_native_writer_lease()
 
     if filepath is None:
         if len(sys.argv) < 2:

@@ -19,8 +19,10 @@ developer's tempdir has no such sweep.
 
 import importlib
 import os
+import subprocess
 import sys
 import tempfile
+import time
 
 import pytest
 
@@ -61,6 +63,7 @@ def test_import_succeeds_when_a_stale_lock_exists(monkeypatch, tmp_path):
     sys.modules.pop("cover_enforcer", None)
 
 
+@pytest.mark.skipif(os.name == 'nt', reason='Windows uses an OS lock rather than a PID file')
 def test_acquire_lock_reclaims_a_lock_owned_by_a_dead_pid(enforcer, tmp_path):
     """A run killed before atexit leaves a lock; the next run must reclaim it."""
     lock = tmp_path / "cover_enforcer.lock"
@@ -74,6 +77,7 @@ def test_acquire_lock_reclaims_a_lock_owned_by_a_dead_pid(enforcer, tmp_path):
     assert lock.read_text().strip() == str(os.getpid())
 
 
+@pytest.mark.skipif(os.name == 'nt', reason='Windows uses an OS lock rather than a PID file')
 def test_acquire_lock_reclaims_a_legacy_empty_lock(enforcer, tmp_path):
     """Locks written before this change carry no pid; they are still stale."""
     lock = tmp_path / "cover_enforcer.lock"
@@ -84,6 +88,7 @@ def test_acquire_lock_reclaims_a_legacy_empty_lock(enforcer, tmp_path):
     assert lock.read_text().strip() == str(os.getpid())
 
 
+@pytest.mark.skipif(os.name == 'nt', reason='Windows uses an OS lock rather than a PID file')
 def test_acquire_lock_refuses_when_the_owner_is_alive(enforcer, tmp_path):
     """The single-instance guarantee still holds against a running enforcer."""
     lock = tmp_path / "cover_enforcer.lock"
@@ -94,6 +99,36 @@ def test_acquire_lock_refuses_when_the_owner_is_alive(enforcer, tmp_path):
 
     assert exc.value.code == 2
     assert lock.read_text().strip() == str(os.getpid())
+
+
+@pytest.mark.skipif(os.name != 'nt', reason='Windows OS-lock behavior')
+def test_windows_lock_excludes_another_process_and_recovers_after_exit(enforcer, tmp_path):
+    ready = tmp_path / 'ready'
+    code = (
+        "import pathlib,sys,tempfile,time; "
+        "sys.path.insert(0,sys.argv[1]); tempfile.tempdir=sys.argv[2]; "
+        "import cover_enforcer; cover_enforcer._acquire_lock_or_exit(); "
+        "pathlib.Path(sys.argv[3]).touch(); time.sleep(30)"
+    )
+    holder = subprocess.Popen([sys.executable, '-I', '-c', code, SCRIPTS, str(tmp_path), str(ready)])
+    try:
+        deadline = time.monotonic() + 15
+        while not ready.exists() and time.monotonic() < deadline:
+            if holder.poll() is not None:
+                pytest.fail('lock holder exited before acquiring the lock')
+            time.sleep(0.05)
+        assert ready.exists()
+        with pytest.raises(SystemExit) as exc:
+            enforcer._acquire_lock_or_exit()
+        assert exc.value.code == 2
+        holder.terminate()
+        holder.wait(timeout=10)
+        enforcer._acquire_lock_or_exit()
+        enforcer.removeLock()
+    finally:
+        if holder.poll() is None:
+            holder.terminate()
+            holder.wait(timeout=10)
 
 
 def test_remove_lock_tolerates_an_already_removed_file(enforcer, tmp_path):

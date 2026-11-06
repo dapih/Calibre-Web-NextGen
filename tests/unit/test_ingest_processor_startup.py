@@ -4,6 +4,7 @@ import sys
 import textwrap
 import importlib
 import inspect
+import time
 from pathlib import Path
 
 import pytest
@@ -104,6 +105,67 @@ def _process_lock_class(monkeypatch, tmp_path):
         lambda: str(tmp_path),
     )
     return ingest_processor.ProcessLock
+
+
+def test_runtime_startup_reuses_its_process_lock(monkeypatch, tmp_path):
+    _process_lock_class(monkeypatch, tmp_path)
+    ingest_processor = importlib.import_module("ingest_processor")
+    monkeypatch.setattr(ingest_processor, "_runtime_initialized", False)
+    monkeypatch.setattr(ingest_processor, "_runtime_init_attempted", False)
+    monkeypatch.setattr(ingest_processor, "process_lock", None)
+    for name in ("_ensure_project_root_on_path", "_load_runtime_dependencies",
+                 "_load_optional_cps_modules", "_ensure_processed_books_dirs",
+                 "_load_backup_destinations"):
+        monkeypatch.setattr(ingest_processor, name, lambda: None)
+
+    try:
+        ingest_processor._acquire_process_lock_or_exit()
+        lock = ingest_processor.process_lock
+        assert lock.acquired
+        handle = lock.lock_file
+        # Recursive directory processing starts the runtime again in the same process.
+        ingest_processor._acquire_process_lock_or_exit()
+        assert lock.acquired and lock.lock_file is handle
+    finally:
+        if ingest_processor.process_lock is not None:
+            ingest_processor.process_lock.release()
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows process-lock backend")
+def test_windows_process_lock_releases_after_holder_termination(monkeypatch, tmp_path):
+    process_lock_class = _process_lock_class(monkeypatch, tmp_path)
+    scripts_dir = Path(__file__).resolve().parents[2] / "scripts"
+    ready = tmp_path / "ready"
+    script = textwrap.dedent("""
+        import pathlib, sys, time
+        sys.path.insert(0, sys.argv[1])
+        from ingest_processor import ProcessLock
+        lock = ProcessLock('windows-owner')
+        lock.lock_path = sys.argv[2]
+        assert lock.acquire(timeout=2)
+        pathlib.Path(sys.argv[3]).touch()
+        time.sleep(30)
+    """)
+    holder = subprocess.Popen([
+        sys.executable, "-c", script, str(scripts_dir),
+        str(tmp_path / "windows-owner.lock"), str(ready),
+    ])
+    contender = process_lock_class("windows-owner")
+    try:
+        deadline = time.monotonic() + 10
+        while not ready.exists() and time.monotonic() < deadline:
+            assert holder.poll() is None, "holder exited before acquiring the lock"
+            time.sleep(0.05)
+        assert ready.exists(), "holder did not acquire the lock"
+        assert not contender.acquire(timeout=0.2)
+        holder.terminate()
+        holder.wait(timeout=5)
+        assert contender.acquire(timeout=2)
+    finally:
+        contender.release()
+        if holder.poll() is None:
+            holder.terminate()
+            holder.wait(timeout=5)
 
 
 def test_process_lock_live_holder_cannot_be_stolen(monkeypatch, tmp_path):

@@ -752,8 +752,9 @@ def test_kepubify_conversion_RE_splits_an_annotated_book_that_was_already_split(
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize('private_stage', [False, True])
 def test_kepubify_conversion_keeps_an_existing_UNSPLIT_annotated_book_unsplit(
-        tmp_path, monkeypatch):
+        tmp_path, monkeypatch, private_stage):
     """The convert boundary must use the detector's False result, not existence.
 
     The positive partner above proves a real splitter output is accepted. This
@@ -802,12 +803,22 @@ def test_kepubify_conversion_keeps_an_existing_UNSPLIT_annotated_book_unsplit(
     _patch_annotation_store(monkeypatch, convert, annotations=1)
     task = convert.TaskConvert(str(book_path), 1, "convert", {}, None)
 
-    check, error = task._convert_kepubify(str(book_path), ".epub", ".kepub")
+    if private_stage:
+        stage = tmp_path / 'private-stage'
+        stage.mkdir()
+        (stage / 'book.epub').write_bytes((tmp_path / 'book.epub').read_bytes())
+        (stage / 'book.kepub.epub').write_bytes((tmp_path / 'book.kepub.epub').read_bytes())
+        output = stage / 'book.kepub'
+        check, error = task._convert_kepubify(str(stage / 'book'), '.epub', '.kepub',
+                                              previous_destination=str(destination))
+    else:
+        output = destination
+        check, error = task._convert_kepubify(str(book_path), ".epub", ".kepub")
 
     assert check == 0, error
     assert detector_calls == [str(destination)], (
         "conversion did not ask the real detector about the stored package")
-    assert _ncx_sources(destination) == [
+    assert _ncx_sources(output) == [
         "chapter.xhtml#one",
         "chapter.xhtml#two",
     ], ("an annotated book whose stored KEPUB was unsplit came back split; "

@@ -65,11 +65,24 @@ def is_enabled() -> bool:
     return raw.strip().lower() in _TRUTHY
 
 
+def _home() -> str:
+    if os.name == "nt" and os.environ.get("CWNG_NATIVE_MODE") == "1":
+        value = os.environ.get("CALIBRE_DBPATH", "")
+        path = Path(value)
+        if not value or not path.is_absolute() or not path.drive or path.drive.startswith("\\\\"):
+            raise ValueError("native Calibre plugins require an absolute private config directory")
+        directory = path.parent if path.suffix.lower() == ".db" else path
+        if directory.parent == directory:
+            raise ValueError("native Calibre plugins require a non-root config directory")
+        return str(directory)
+    return _HOME
+
+
 def apply_to_env(env: dict[str, str]) -> dict[str, str]:
-    """If enabled, set ``HOME=/config`` and
-    ``CALIBRE_CONFIG_DIRECTORY=/config/.config/calibre`` on the given
-    env mapping in place and return it. If disabled, return the env
-    unchanged.
+    """When enabled, point Calibre at the platform's private plugin directory.
+
+    Containers use ``/config``; native Windows uses its configured private
+    state directory. If disabled, return the environment unchanged.
 
     Designed to be called right before ``subprocess.run(..., env=env)``:
 
@@ -84,7 +97,7 @@ def apply_to_env(env: dict[str, str]) -> dict[str, str]:
     the intended off-state.
     """
     if is_enabled():
-        env["HOME"] = _HOME
+        env["HOME"] = _home()
         env["CALIBRE_CONFIG_DIRECTORY"] = str(config_dir())
     return env
 
@@ -93,13 +106,13 @@ def config_dir() -> Path:
     """Absolute path to the Calibre configuration directory the opt-in
     points subprocesses at (``/config/.config/calibre``). The plugins
     directory lives directly beneath it."""
-    return Path(_HOME) / _PLUGINS_SUBPATH.rsplit("/", 1)[0]
+    return Path(_home()) / _PLUGINS_SUBPATH.rsplit("/", 1)[0]
 
 
 def plugins_dir() -> Path:
     """Absolute path to where Calibre will look for user plugins when
     HOME=/config. Always returns a path; doesn't check existence."""
-    return Path(_HOME) / _PLUGINS_SUBPATH
+    return Path(_home()) / _PLUGINS_SUBPATH
 
 
 def ensure_plugins_dir() -> Path | None:
@@ -255,4 +268,4 @@ def env_var_name() -> str:
 
 def home_path() -> str:
     """Public accessor for the HOME value injected when enabled."""
-    return _HOME
+    return _home()

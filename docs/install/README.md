@@ -6,6 +6,10 @@ Calibre-Web-NextGen ships as a single Docker image:
 ghcr.io/new-usemame/calibre-web-nextgen:latest
 ```
 
+A native Windows installation is under development; there is no Windows installer
+or native release yet. The [Windows specification](windows-native-specification.md)
+and [M0 handoff](windows-m0-handoff.md) describe the development proof and its limits.
+
 It's a drop-in for the standard Calibre-Web-Automated (CWA) image. **Switching keeps
 everything**: your books, users, settings, shelves and the Read checkmarks you've set all
 live in the folders you mount into the container (`/config` and `/calibre-library`), not

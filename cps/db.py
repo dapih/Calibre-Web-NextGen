@@ -16,6 +16,7 @@ from weakref import WeakSet, WeakKeyDictionary
 from uuid import uuid4
 import time
 import sqlite3
+from contextlib import nullcontext
 from sqlalchemy import create_engine, event
 from sqlalchemy import Table, Column, ForeignKey, CheckConstraint
 from sqlalchemy import String, Integer, Boolean, TIMESTAMP, Float
@@ -52,6 +53,14 @@ from .unicode_collation import unicode_initial, unicode_sort_key
 from .services.restriction_columns import restriction_predicate
 
 log = logger.create()
+
+
+def _native_db_setup_guard():
+    """Acquire native writer authority before the reconnect lock."""
+    if os.name == 'nt' and os.environ.get('CWNG_NATIVE_MODE') == '1':
+        from .services.calibre_db_lock import metadata_db_write_lock
+        return metadata_db_write_lock()
+    return nullcontext()
 
 
 class FilteredBookVisibilityUnavailable(RuntimeError):
@@ -1180,6 +1189,10 @@ class CalibreDB:
         """
         if self.session is not None:
             return  # Fast path - session already exists
+        with _native_db_setup_guard():
+            return self._ensure_session_locked(expire_on_commit)
+
+    def _ensure_session_locked(self, expire_on_commit=True):
         
         # Session is None - need to recreate it
         # Acquire lock to ensure atomic recreation (no interruption by dispose)
@@ -1393,6 +1406,11 @@ class CalibreDB:
 
     @classmethod
     def setup_db(cls, config_calibre_dir, app_db_path):
+        with _native_db_setup_guard():
+            return cls._setup_db_locked(config_calibre_dir, app_db_path)
+
+    @classmethod
+    def _setup_db_locked(cls, config_calibre_dir, app_db_path):
         # Wrap entire method in lock to ensure atomic setup operation
         # RLock is reentrant, so nested calls (e.g., from reconnect_db) are safe
         with cls._reconnect_lock:
@@ -2749,6 +2767,11 @@ class CalibreDB:
 
     @classmethod
     def _reconnect(cls, config, app_db_path):
+        with _native_db_setup_guard():
+            return cls._reconnect_locked(config, app_db_path)
+
+    @classmethod
+    def _reconnect_locked(cls, config, app_db_path):
         # Use lock to ensure atomic reconnect operation
         with cls._reconnect_lock:
             # Be resilient if database wasn't initialized yet
