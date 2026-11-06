@@ -24,7 +24,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from windows_m0_inbox import _flush_directory, _locked_source, _volume_identity
 from windows_m0_dispatch import EnforcementDispatcher, IngestDispatcher, _digest
 from windows_m0_epub_fixer import EpubFixerDispatcher
-from windows_m0_activation import open_or_activate
+from windows_m0_activation import ControlRecoveryRequired, open_or_activate
 from windows_m0_coordinator import Coordinator, CoordinatorBusy
 from windows_m0_job import Job, generation_exists
 from windows_m0_supervisor import RestartBudget
@@ -32,6 +32,7 @@ from windows_native_controller import NativeController
 from windows_native_conversion_recovery import confirm_conversion
 from windows_native_ingest_recovery import confirm_ingest
 from windows_native_profile import require_private_directory
+from windows_native_install_gate import install_gate
 from windows_native_network_controls import NetworkControls
 from windows_native_lan import authenticated_network_status
 from windows_native_network import check_loopback_port
@@ -263,6 +264,40 @@ def _retry_unstarted_ingest(controller, job_id):
     return 'The unstarted ingest is queued again. Other reviewed work remains paused.'
 
 
+def _retry_unstarted_request(controller, job_id):
+    """Requeue only an unprepared bulk or repair request that never ran."""
+    operations = {
+        'convert-library-request': 'convert-library',
+        'manual-enforce-request': 'manual-enforce',
+        'epub-fixer-request': 'epub-fixer',
+    }
+    with _offline_recovery_owner(controller) as owner:
+        database = _verify_recovery_storage(controller)
+
+        def verify(record, outcome):
+            operation = record.get('operation')
+            intent = record.get('intent')
+            if (outcome != 'retry' or operation not in operations or
+                    record.get('generation') is not None or record.get('attempts') != 0):
+                return False
+            if operation == 'epub-fixer-request':
+                if (not isinstance(intent, dict) or set(intent) != {'book_id'} or
+                        (intent['book_id'] is not None and
+                         (type(intent['book_id']) is not int or intent['book_id'] <= 0))):
+                    return False
+            elif intent != {}:
+                return False
+            for state in ('pending', 'running'):
+                if any(item['operation'] in (operation, operations[operation])
+                       for item in owner.ledger.list_jobs(state)):
+                    return False
+            return _verify_recovery_storage(controller) == database
+
+        owner.reconcile(job_id, outcome='retry',
+                        evidence='never-started request queued for preparation', verify=verify)
+    return 'The request is queued again. CWNG will check whether it can run.'
+
+
 def _confirm_conversion(controller, job_id):
     """Verify a completed conversion while holding exclusive offline ownership."""
     with _offline_recovery_owner(controller) as owner:
@@ -404,6 +439,12 @@ def _recover_work(controller, reason):
             action, label = _confirm_conversion, 'Verify completed conversion'
         elif operation == 'epub-fixer':
             action, label = _confirm_epub_repair, 'Verify completed EPUB repair'
+        elif operation in ('convert-library-request', 'manual-enforce-request', 'epub-fixer-request') and job.get('attempts') == 0:
+            action, label = _retry_unstarted_request, 'Retry unstarted ' + {
+                'convert-library-request': 'library conversion',
+                'manual-enforce-request': 'manual enforcement',
+                'epub-fixer-request': 'EPUB repair',
+            }[operation]
         else:
             continue
         actions.append((job['id'], label, action))
@@ -481,7 +522,7 @@ def _start_with_port_retry(controller, state):
     while True:
         try:
             return controller, controller.start()
-        except CoordinatorBusy:
+        except (CoordinatorBusy, ControlRecoveryRequired):
             raise
         except RuntimeError:
             if check_loopback_port(controller.port):
@@ -542,7 +583,7 @@ def _launch_setup(args):
     return (state / 'setup-complete.json').is_file()
 
 
-def main(argv=None):
+def _main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--state', required=True, help='Existing validated private profile directory')
     actions = parser.add_mutually_exclusive_group()
@@ -596,6 +637,17 @@ def main(argv=None):
             break
         except CoordinatorBusy as error:
             if not _recover_work(controller, str(error)):
+                return 1
+            controller = _read_profile(args.state)
+        except ControlRecoveryRequired:
+            if _message('The local control service stopped after repeated failures. '
+                        'Check the logs in ' + str(controller.state / 'config') +
+                        '. After correcting the cause, reset its restart limit and try again?', 4 | 0x20) != 6:
+                return 1
+            try:
+                _reset_restart_budget(controller, 'control')
+            except (OSError, ValueError, RuntimeError, sqlite3.Error) as error:
+                _message('Recovery could not start: ' + str(error), 0x10)
                 return 1
             controller = _read_profile(args.state)
     if controller is None:
@@ -762,6 +814,11 @@ def main(argv=None):
         from windows_native_password import prompt_and_recover
         prompt_and_recover(controller)
     return 0
+
+
+def main(argv=None):
+    with install_gate():
+        return _main(argv)
 
 
 if __name__ == '__main__':

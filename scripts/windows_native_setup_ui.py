@@ -157,7 +157,7 @@ class SetupWindow:
             if event == 'done':
                 self.done = True
                 self.close_button.configure(text='Close')
-                self.status.set('Setup complete. Close this window and start CWNG.')
+                self.status.set('Setup complete. Close this window to continue starting CWNG.')
                 if self.on_success:
                     self.on_success(value)
             else:
@@ -179,7 +179,7 @@ class SetupWindow:
         self.root.destroy()
 
 
-def main(argv=None):
+def _main(argv=None):
     parser = argparse.ArgumentParser(description='Open local CWNG first-run setup')
     for name in ('state', 'helper', 'runtime', 'calibre', 'kepubify', 'magick'):
         parser.add_argument('--' + name, required=True)
@@ -198,6 +198,12 @@ def main(argv=None):
         SetupWindow(root, {**args, 'ownership': ownership},
                     copy_setup=complete_copy_setup, new_setup=complete_new_setup)
         root.mainloop()
+
+
+def main(argv=None):
+    from windows_native_install_gate import install_gate
+    with install_gate():
+        return _main(argv)
 
 
 if __name__ == '__main__':

@@ -589,3 +589,18 @@ The startup recovery dialog offers the existing safe offline verification and re
 A development first-install preview installs a fixed per-user program. The bootstrap holds an installation-wide gate for eventual maintenance integration. An earlier isolated fixture exercised first install and a gate-protected uninstall with a small payload; that uninstall was removed because independent maintenance and recovery do not yet share the gate. The current preview compiles with uninstall disabled. The full application payload and uninstall registry registration have not been verified. Upgrade, repair, retained-profile reinstall, uninstall, reset and release acceptance remain pending.
 
 The acceptance text no longer requires a checkpoint on first install, a physical drive removal or actual sleep/logoff when the installed lifecycle handler can receive the same event, or exhaustive detection of third-party sync software. Physical e-reader acceptance and the underlying data-safety requirements remain.
+
+A startup prompt now handles an exhausted local-control restart limit, points to the log folder, and lets the user explicitly reset that limit after correcting the cause. Reset still takes the offline profile owner and checks storage; it does not clear reviewed jobs. Seventeen focused launcher tests passed, including a real persisted restart limit and profile-lock reset. Installed GUI acceptance remains pending.
+
+The startup review dialog can also requeue an unprepared, never-started conversion, manual-enforcement or EPUB-repair request after the user addresses its preparation error. This only returns the original request to the existing scheduler, which prepares and validates it again before launching any writer; started jobs and prepared snapshots are excluded. Eighteen launcher tests passed, including a real ledger/profile-lock retry. The installed GUI still needs acceptance testing.
+
+
+## Installer and recovery continuation — 2026-11-06
+
+Startup now offers an explicit reset of an exhausted control-service restart budget, using the existing offline fenced reset. Never-started conversion, manual-enforcement and EPUB-repair requests can be requeued for normal preparation; ambiguous started work remains in review. The focused launcher suite passed 18 tests. Setup now correctly says that closing the window continues startup.
+
+The installation-wide gate is shared by the launcher and standalone maintenance/recovery entry points; setup and uninstall acquire it exclusively. The preview installer supports first install, same-version repair, data-retaining uninstall and same-version reinstall. An isolated installer fixture exercised those operations. Cross-version updates and installed-candidate acceptance remain pending. The mandatory reset feature was removed from the specification; manual data removal is documented in [Windows native preview](windows-native-preview.md).
+
+A current-source full payload was staged in `.m0/installer-proof-op7zxgvr`, but compiling its installer ran out of disk space. The failed build produced no installer; a previous comparable EXE was about 1.18 GB, and only about 0.36 GB remained free. No production installation was changed.
+
+The freshly staged payload passed a direct disposable-profile setup, real Flask/controller/scheduler start, stop and restart. This did not exercise an installed package.

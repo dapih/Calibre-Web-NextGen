@@ -16,6 +16,10 @@ from windows_m0_coordinator import Coordinator
 from windows_m0_supervisor import RestartBudget
 
 
+class ControlRecoveryRequired(RuntimeError):
+    """The control service exhausted its automatic restart budget."""
+
+
 def _profile(state_dir):
     state = Path(state_dir).resolve(strict=True)
     if not state.is_dir() or not state.drive or state.drive.startswith('\\\\'):
@@ -42,7 +46,7 @@ class LocalOwner:
         try:
             self.restart_budget = RestartBudget(ledger=self.owner.ledger, role='control')
             if self.restart_budget.paused:
-                raise RuntimeError('control role is paused after repeated failures; recovery is required')
+                raise ControlRecoveryRequired('control role is paused after repeated failures; recovery is required')
             key = secrets.token_bytes(32)
             self.pipe = ControlPipe(_pipe_name(self.state), key, timeout=0.5)
             with temporary.open('xb') as stream:

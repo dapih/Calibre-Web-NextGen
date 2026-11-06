@@ -17,6 +17,55 @@ if os.name == 'nt':
 
 @unittest.skipUnless(os.name == 'nt', 'Windows native launcher')
 class LauncherLifecycleTests(unittest.TestCase):
+    def test_control_restart_recovery_resets_then_retries_startup(self):
+        controller = SimpleNamespace(state=Path('state'))
+        with patch.object(launcher, '_read_profile', return_value=controller), \
+             patch.object(launcher, '_launch_setup', return_value=True), \
+             patch.object(launcher, '_start_with_port_retry', side_effect=[
+                 launcher.ControlRecoveryRequired('paused'), (controller, {'active': True})]), \
+             patch.object(launcher, '_reset_restart_budget') as reset, \
+             patch.object(launcher, '_message', side_effect=[6, 1]):
+            self.assertEqual(launcher.main(['--state', 'unused']), 0)
+        reset.assert_called_once_with(controller, 'control')
+
+    def test_control_restart_recovery_with_real_profile_lock(self):
+        helpers = list((Path(__file__).resolve().parents[2] / '.m0').glob('control-proof-*/cwng-native.dll'))
+        if not helpers:
+            self.skipTest('private native helper is unavailable')
+        with tempfile.TemporaryDirectory() as directory:
+            state = Path(directory)
+            controller = SimpleNamespace(state=state, helper=helpers[0], generation_file=state / 'web-generation')
+            with launcher.Coordinator(controller.helper, state) as owner:
+                for _ in range(4):
+                    owner.ledger.restart_state('control', failure=True)
+            with self.assertRaises(launcher.ControlRecoveryRequired):
+                launcher.open_or_activate(controller.helper, state)
+            with patch.object(launcher, '_verify_recovery_storage'):
+                launcher._reset_restart_budget(controller, 'control')
+            local, existing = launcher.open_or_activate(controller.helper, state)
+            try:
+                self.assertIsNone(existing)
+            finally:
+                local.close()
+
+    def test_retry_never_started_bulk_request_uses_existing_preparation(self):
+        helpers = list((Path(__file__).resolve().parents[2] / '.m0').glob('control-proof-*/cwng-native.dll'))
+        if not helpers:
+            self.skipTest('private native helper is unavailable')
+        with tempfile.TemporaryDirectory() as directory:
+            state = Path(directory)
+            controller = SimpleNamespace(state=state, helper=helpers[0], generation_file=state / 'web-generation')
+            with launcher.Coordinator(controller.helper, state) as owner:
+                job_id = owner.ledger.request_conversion()
+                owner.ledger.review_pending(job_id, 'cannot prepare')
+            with patch.object(launcher, '_verify_recovery_storage', return_value=state / 'metadata.db'):
+                launcher._retry_unstarted_request(controller, job_id)
+            with launcher.Coordinator(controller.helper, state) as owner:
+                job = owner.ledger.get(job_id)
+                self.assertEqual(job['state'], 'pending')
+                self.assertEqual(job['operation'], 'convert-library-request')
+                self.assertEqual(job['attempts'], 0)
+
     def test_startup_offers_recovery_then_retries(self):
         controller = object()
         with patch.object(launcher, '_read_profile', return_value=controller), \

@@ -21,7 +21,7 @@ The experimental work is in branch `codex/windows-m0-proof`. The local worktree 
 
 1. Continue M1 operation-specific reconciliation and normal-launcher lifecycle verification. Never infer a failed transaction from a missing receipt. The current narrow recovery actions and conversion completion marker are documented in the progress record.
 2. Continue M2 installed setup/tray, LAN and update integration. Confirm a real Private-profile device, firewall behavior and the GUI; the available host's Public profile only proves denial. Native HTTPS and OAuth login are currently unavailable as described in the specification.
-3. Continue M3 with candidate identity and compatibility verification, journal recovery reachable through the installer/bootstrap, migrations, activation, rollback, retention and real uninstall/reset. Current checkpoints and prepared cancellation are internal groundwork; the fixed-target proof EXE is not a product installer. Unsigned stable releases remain allowed.
+3. Continue M3 with candidate identity and compatibility verification, journal recovery reachable through the installer/bootstrap, migrations, activation, rollback, retention and data-preserving uninstall. A dedicated reset feature is optional; manual data-removal instructions suffice. Current checkpoints and prepared cancellation are internal groundwork; the fixed-target proof EXE is not a product installer. Unsigned stable releases remain allowed.
 4. Complete the pending I/R coverage against the installed candidate. Reuse a result across gates and carry forward unaffected evidence with a change-impact explanation. Review the exact payload, provenance, notices and servicing. Physical Kobo/KOReader and unsigned-package policy checks remain required; do not add cross-account or separate-machine requirements, or Docker/WSL setup.
 
 For storage/lifecycle acceptance, inject unavailable/replaced storage and
@@ -30,8 +30,9 @@ removal, logoff or sleep is not required. Registered cloud-sync roots are
 detectable; users must confirm other sync software because exhaustive detection
 is not possible. A new installation has no prior state to checkpoint.
 
-The bootstrap holds an installation-wide lifetime gate. The first-install
-preview has uninstall disabled until independent maintenance and recovery join
-that gate. Upgrade, repair and reinstall over a retained profile are also pending.
+The bootstrap and standalone maintenance commands share an installation-wide
+gate with setup and uninstall. The preview supports first install, same-version
+repair, data-retaining uninstall and same-version reinstall. Cross-version
+upgrade and installed-candidate acceptance remain pending.
 
 The user explicitly authorized committing and pushing this M0 branch. That authorization does not itself publish an installer, binary wheel or release. The `.m0/` build and evidence outputs remain local and ignored.

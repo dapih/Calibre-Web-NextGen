@@ -30,6 +30,7 @@ from windows_m0_coordinator import CoordinatorBusy
 from windows_m0_inbox import _flush_directory, _volume_identity
 from windows_m0_job import ProfileLock, generation_exists
 from windows_native_maintenance_gate import adopt_maintenance_gate, maintenance_gate
+from windows_native_install_gate import install_gate
 from windows_native_launcher import _offline_recovery_owner, _read_profile, _verify_recovery_storage
 from windows_native_profile import require_private_directory
 from windows_native_recovery_inventory import build_inventory
@@ -1075,7 +1076,7 @@ def recover_guarded_activation(state, program_root, recovery, *, _inherited_gate
                                 _inherited_gate=_inherited_gate)
 
 
-def main():
+def _main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--state', required=True)
     parser.add_argument('--recovery', required=True)
@@ -1092,6 +1093,11 @@ def main():
     else:
         result = create_checkpoint(controller, args.recovery, payload_identity=args.payload_identity, full=args.full)
     print(result)
+
+
+def main():
+    with install_gate():
+        return _main()
 
 
 if __name__ == '__main__':

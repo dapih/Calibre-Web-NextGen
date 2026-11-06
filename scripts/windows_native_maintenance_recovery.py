@@ -65,7 +65,7 @@ def _require_private_origins():
             raise RuntimeError('recovery loaded an external native module')
 
 
-def main():
+def _main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--state', required=True)
     parser.add_argument('--program-root', required=True)
@@ -73,6 +73,12 @@ def main():
     args = parser.parse_args()
     _require_private_origins()
     recover_guarded_activation(args.state, args.program_root, args.recovery)
+
+
+def main():
+    from windows_native_install_gate import install_gate
+    with install_gate():
+        return _main()
 
 
 if __name__ == '__main__':
