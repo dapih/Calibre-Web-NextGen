@@ -74,9 +74,10 @@ class ManualEnforcementDispatcher(EnforcementDispatcher):
         script = Path(__file__).with_name('cover_enforcer.py').resolve(strict=True)
         bootstrap = ("import runpy,sys; sys.path.insert(0,sys.argv[1]); "
                      "sys.stdout=open(sys.argv[3],'a',encoding='utf-8',buffering=1); sys.stderr=sys.stdout; "
-                     "sys.argv=[sys.argv[2],'-all']; runpy.run_path(sys.argv[0],run_name='__main__')")
+                     "sys.argv=[sys.argv[2],'-all']; "
+                     "runpy.run_path(sys.argv[0],run_name='__cwng_native_enforcer__')['main'](native_strict=True)")
         pid = self.owner.start(job_id, self.python,
-                               ['-I', '-c', bootstrap, str(script.parent), str(script), str(log)],
+                               ['-I', '-B', '-c', bootstrap, str(script.parent), str(script), str(log)],
                                cwd=self.state, environment=self.environment, writer_lock_dir=self.writer_lock_dir,
                                preflight=preflight)
         self._logs[job_id] = log
@@ -94,13 +95,16 @@ class ManualEnforcementDispatcher(EnforcementDispatcher):
                 (b['book_id'], b['title'], [f['format'] for f in b['files']]) for b in expected]:
             return False
         with sqlite3.connect(self.database.as_uri() + '?mode=ro', uri=True) as db:
+            directories = set()
             for book in expected:
                 directory, _, title = self._book(book['book_id'])
+                directories.add(directory)
                 rows = db.execute('SELECT format,name FROM data WHERE book=?', (book['book_id'],)).fetchall()
                 for fmt, name in rows:
                     if not self._title_matches(directory / (name + '.' + fmt.lower()), title):
                         return False
-        return True
+        self._flush_outputs(directories)
+        return self.prepare()['books'] == current
 
     def finish(self, job_id):
         self.owner.finish(job_id, evidence='all supported EPUB titles verified', verify=lambda: self.verify(job_id))

@@ -120,7 +120,10 @@ class IngestDispatcher:
             raise OSError('library database identity changed')
         if self._verify_endpoint(self.port) is not True:
             raise OSError('application endpoint ownership changed')
-        attempt = self.work_root / uuid.uuid4().hex
+        if uuid.UUID(hex=job_id).hex != job_id:
+            raise ValueError('invalid ingest job id')
+        attempt_number = record['attempts'] + 1
+        attempt = self.work_root / ('ingest-' + job_id + '-' + str(attempt_number) + '-' + uuid.uuid4().hex)
         attempt.mkdir()
         _flush_directory(self.work_root)
         work_file = attempt / ('input' + staged.suffix)
@@ -148,13 +151,13 @@ class IngestDispatcher:
             self._check_settings()
             return True
         # Isolated mode ignores PYTHONPATH, so explicitly add only this source tree.
+        worker = Path(__file__).with_name('windows_m0_ingest_worker.py').resolve(strict=True)
         bootstrap = ("import runpy,sys; sys.path.insert(0,sys.argv[1]); "
-                     "__import__('windows_m0_origin').install(sys.argv[2]); "
-                     "sys.stdout=open(sys.argv[4],'a',encoding='utf-8',buffering=1); sys.stderr=sys.stdout; "
-                     "sys.argv=[sys.argv[2],sys.argv[3]]; runpy.run_path(sys.argv[0],run_name='__main__')")
+                     "sys.argv=sys.argv[2:]; runpy.run_path(sys.argv[0],run_name='__main__')")
         return self.owner.start(job_id, self.python,
-                                ['-I', '-c', bootstrap, str(self.script.parent), str(self.script), str(work_file),
-                                 str(attempt / 'worker.log')],
+                                ['-I', '-B', '-c', bootstrap, str(self.script.parent), str(worker),
+                                 str(self.script), str(work_file), job_id, str(attempt_number),
+                                 intent['sha256'], str(intent['size']), str(attempt / 'worker.log')],
                                 cwd=self.state, environment=self.environment,
                                 writer_lock_dir=self.writer_lock_dir, preflight=preflight)
 
@@ -202,6 +205,34 @@ class IngestDispatcher:
 
 class EnforcementDispatcher(IngestDispatcher):
     """Run the actual metadata enforcer for one verified EPUB book."""
+
+    def _flush_outputs(self, book_directories):
+        """Make the files the enforcer can change durable before completion."""
+        durable = [self.database]
+        wal = self.database.with_name(self.database.name + '-wal')
+        if wal.exists():
+            durable.append(wal)
+        directories = {self.library, self.database.parent}
+        for directory in book_directories:
+            directory = directory.resolve(strict=True)
+            if not directory.is_relative_to(self.library):
+                raise ValueError('enforcement directory is outside the library')
+            for entry in directory.iterdir():
+                name = entry.name.lower()
+                if name in ('cover.jpg', 'metadata.opf') or name.endswith(('.epub', '.kepub', '.azw3')):
+                    path = entry.resolve(strict=True)
+                    if not path.is_relative_to(directory) or not path.is_file():
+                        raise ValueError('enforcement output is unsafe')
+                    durable.append(path)
+            parent = directory
+            while parent != self.library:
+                directories.add(parent)
+                parent = parent.parent
+        for path in durable:
+            with path.open('r+b') as stream:
+                os.fsync(stream.fileno())
+        for directory in sorted(directories, key=lambda path: len(path.parts), reverse=True):
+            _flush_directory(directory)
 
     def _book(self, book_id):
         if not isinstance(book_id, int) or isinstance(book_id, bool) or book_id <= 0:
@@ -260,9 +291,10 @@ class EnforcementDispatcher(IngestDispatcher):
         bootstrap = ("import runpy,sys; sys.path.insert(0,sys.argv[1]); "
                      "__import__('windows_m0_origin').install(sys.argv[2]); "
                      "sys.stdout=open(sys.argv[4],'a',encoding='utf-8',buffering=1); sys.stderr=sys.stdout; "
-                     "sys.argv=[sys.argv[2],'--dir',sys.argv[3]]; runpy.run_path(sys.argv[0],run_name='__main__')")
+                     "sys.argv=[sys.argv[2],'--dir',sys.argv[3]]; "
+                     "runpy.run_path(sys.argv[0],run_name='__cwng_native_enforcer__')['main'](native_strict=True)")
         return self.owner.start(job_id, self.python,
-                                ['-I', '-c', bootstrap, str(script.parent), str(script), str(directory),
+                                ['-I', '-B', '-c', bootstrap, str(script.parent), str(script), str(directory),
                                  str(attempt / 'worker.log')], cwd=self.state, environment=self.environment,
                                 writer_lock_dir=self.writer_lock_dir, preflight=preflight)
 
@@ -270,10 +302,12 @@ class EnforcementDispatcher(IngestDispatcher):
         record = self.owner.ledger.get(job_id)
         if not record or record['operation'] != 'enforce':
             return False
-        _, book, title = self._book(record['intent']['book_id'])
+        directory, book, title = self._book(record['intent']['book_id'])
         if title != record['intent']['title']:
             return False
         with zipfile.ZipFile(book) as archive:
+            if archive.testzip() is not None:
+                return False
             def read_unique(name):
                 matches = [item for item in archive.infolist() if item.filename == name]
                 if len(matches) != 1 or matches[0].file_size > 2 * 1024 * 1024:
@@ -289,7 +323,10 @@ class EnforcementDispatcher(IngestDispatcher):
                 return False
             metadata = ET.fromstring(read_unique(package))
             titles = metadata.findall('.//{http://purl.org/dc/elements/1.1/}title')
-            return bool(titles and ''.join(titles[0].itertext()).strip() == title)
+            if not titles or ''.join(titles[0].itertext()).strip() != title:
+                return False
+        self._flush_outputs([directory])
+        return self._book(record['intent']['book_id']) == (directory, book, title)
 
     def finish(self, job_id):
         self.owner.finish(job_id, evidence='library metadata and EPUB title verified',

@@ -523,7 +523,7 @@ class Enforcer:
         return app_paths.calibre_library_dir(dirs_json) # Returns without / on the end
 
 
-    def _restat_format_size_after_modification(self, book_id: str, file_format: str, file_path: str) -> None:
+    def _restat_format_size_after_modification(self, book_id: str, file_format: str, file_path: str) -> bool:
         """Re-stat data.uncompressed_size after rewriting a format in place (#1711).
 
         cps/kobo.py advertises this column to a paired device verbatim as
@@ -546,7 +546,7 @@ class Enforcer:
         except OSError as e:
             print(f"[cover-metadata-enforcer] Warning: could not stat {file_path} "
                   f"to refresh its size: {e}", flush=True)
-            return
+            return False
         try:
             metadb_path = os.path.join(
                 (self.split_library or {}).get("db_path", self.calibre_library),
@@ -562,13 +562,15 @@ class Enforcer:
                 if cur.rowcount:
                     print(f"[cover-metadata-enforcer] Refreshed size for book {book_id} "
                           f"format {file_format.upper()} -> {size} bytes", flush=True)
+                return cur.rowcount == 1
             finally:
                 con.close()
         except Exception as e:
             print(f"[cover-metadata-enforcer] Warning: Failed to refresh format size "
                   f"for book {book_id}: {e}", flush=True)
+            return False
 
-    def _recalculate_checksum_after_modification(self, book_id: str, file_format: str, file_path: str) -> None:
+    def _recalculate_checksum_after_modification(self, book_id: str, file_format: str, file_path: str) -> bool:
         """Calculate and store new checksum after modifying a book file."""
         try:
             # Import the checksum calculation function
@@ -582,10 +584,10 @@ class Enforcer:
             try:
                 from cps.progress_syncing.settings import is_koreader_sync_enabled
                 if not is_koreader_sync_enabled():
-                    return
+                    return True
             except Exception:
                 # Fail closed: if the flag can't be read, don't risk writes.
-                return
+                return False
 
             from cps.progress_syncing.checksums import calculate_koreader_partial_md5, store_checksum, CHECKSUM_VERSION
 
@@ -593,7 +595,7 @@ class Enforcer:
             checksum = calculate_koreader_partial_md5(file_path)
             if not checksum:
                 print(f"[cover-metadata-enforcer] Warning: Failed to calculate checksum for {file_path}", flush=True)
-                return
+                return False
 
             # Store in database using centralized manager function
             metadb_path = os.path.join(
@@ -616,12 +618,14 @@ class Enforcer:
                     print(f"[cover-metadata-enforcer] Stored checksum {checksum[:8]}... for book {book_id} format {file_format} ({CHECKSUM_VERSION})", flush=True)
                 else:
                     print(f"[cover-metadata-enforcer] Warning: Failed to store checksum for book {book_id}", flush=True)
+                return bool(success)
             finally:
                 con.close()
         except Exception as e:
             print(f"[cover-metadata-enforcer] Warning: Failed to recalculate checksum: {e}", flush=True)
             import traceback
             print(traceback.format_exc(), flush=True)
+            return False
 
 
     def read_log(self, auto=True, log_path: str = "None") -> dict:
@@ -909,14 +913,18 @@ class Enforcer:
                   f"'{book_dir}': {error}", flush=True)
             return False
 
-    def enforce_cover(self, book_dir: str) -> list:
+    def enforce_cover(self, book_dir: str, *, native_strict=False) -> list:
         """Will force the Cover & Metadata to update for the supported book files in the given directory"""
         self.generate_missing_cover_if_enabled(book_dir)
         supported_files = self.get_supported_files_from_dir(book_dir)
+        if native_strict and any(os.path.dirname(os.path.abspath(file)) != os.path.abspath(book_dir)
+                                 for file in supported_files):
+            raise RuntimeError("nested supported formats cannot be safely enforced")
         if supported_files:
             if len(supported_files) > 1:
                 print("[cover-metadata-enforcer] Multiple file formats for current book detected...", flush=True)
             book_objects = []
+            native_failure = False
             for file in supported_files:
                 book = Book(book_dir, file)
                 self.replace_old_metadata(book.old_metadata_path, book.new_metadata_path)
@@ -1121,16 +1129,24 @@ class Enforcer:
                     print(f"[cover-metadata-enforcer]: DONE: '{book.title_author}.{book.file_format}': Cover & Metadata updated", flush=True)
 
                     # Calculate and store new checksum after modification
-                    self._recalculate_checksum_after_modification(book.book_id, book.file_format, file)
+                    checksum_ok = self._recalculate_checksum_after_modification(book.book_id, book.file_format, file)
                     # The bytes on disk just changed; the size Kobo is told must
                     # change with them (#1711).
-                    self._restat_format_size_after_modification(book.book_id, book.file_format, file)
+                    size_ok = self._restat_format_size_after_modification(book.book_id, book.file_format, file)
+                    if native_strict and (checksum_ok is not True or size_ok is not True):
+                        native_failure = True
 
+                if not write_completed:
+                    native_failure = True
                 book_objects.append(book)
 
             self._reset_book_dir_ownership(book_dir)
+            if native_strict and native_failure:
+                raise RuntimeError("one or more supported formats were not enforced")
             return book_objects
         else:
+            if native_strict:
+                raise RuntimeError("no supported formats were enforced")
             return self._write_metadata_backup_for_unsupported(book_dir)
 
     def _write_metadata_backup_for_unsupported(self, book_dir: str) -> list:
@@ -1202,7 +1218,7 @@ class Enforcer:
             print(f"[cover-metadata-enforcer] Warning: failed to chown {book_dir}: {e}", flush=True)
 
 
-    def enforce_all_covers(self) -> tuple[int, float, int] | tuple[bool, bool, bool]:
+    def enforce_all_covers(self, *, native_strict=False) -> tuple[int, float, int] | tuple[bool, bool, bool]:
         """Will force the covers and metadata to be re-generated for all books in the library"""
         t_start = time.time()
 
@@ -1234,13 +1250,16 @@ class Enforcer:
             for index, book_dir in enumerate(book_dirs, start=1):
                 print(f"[cover-metadata-enforcer]: Enforcing book {index}/{len(book_dirs)} ...", flush=True)
                 try:
-                    book_objects = self.enforce_cover(book_dir)
+                    book_objects = (self.enforce_cover(book_dir, native_strict=True)
+                                    if native_strict else self.enforce_cover(book_dir))
                     if book_objects:
                         book_dicts = []
                         for book in book_objects:
                             book_dicts.append(book.export_as_dict())
                         self.db.enforce_add_entry_from_all(book_dicts)
                 except Exception as e:
+                    if native_strict:
+                        raise
                     print(f"[cover-metadata-enforcer]: ERROR: {book_dir}")
                     print(f"[cover-metadata-enforcer]: Skipping book due to following error: {e}")
                     successful_enforcements = successful_enforcements - 1
@@ -1417,7 +1436,7 @@ class Enforcer:
                     self.delete_log(auto=False, log_path=log_path)
 
 
-def main():
+def main(*, native_strict=False):
     # Single-instance guard. Taken here rather than at import so that merely
     # importing this module -- which nine test modules and several tools do --
     # cannot exit the interpreter over a lockfile left by a killed run.
@@ -1462,7 +1481,8 @@ def main():
     elif args.all and args.log is None and args.dir is None and args.list is False and args.history is False:
         ### only all flag passed
         print('[cover-metadata-enforcer]: Enforcing metadata and covers for all books in library...')
-        n_enforced, completion_time, n_supported_files = enforcer.enforce_all_covers()
+        n_enforced, completion_time, n_supported_files = (enforcer.enforce_all_covers(native_strict=True)
+                                                        if native_strict else enforcer.enforce_all_covers())
         if n_enforced == False:
             print(f"\n[cover-metadata-enforcer]: No supported ebook files found in library (only {enforcer.supported_formats_label()} formats are currently supported)")
         elif n_enforced == n_supported_files:
@@ -1478,13 +1498,16 @@ def main():
         if args.dir[-1] == '/':
             args.dir = args.dir[:-1]
         if os.path.isdir(args.dir):
-            book_objects = enforcer.enforce_cover(args.dir)
+            book_objects = (enforcer.enforce_cover(args.dir, native_strict=True)
+                            if native_strict else enforcer.enforce_cover(args.dir))
             if book_objects:
                 book_dicts = []
                 for book in book_objects:
                     book_dicts.append(book.export_as_dict())
                 enforcer.db.enforce_add_entry_from_dir(book_dicts)
         else:
+            if native_strict:
+                raise RuntimeError("enforcement directory does not exist")
             print(f"[cover-metadata-enforcer]: ERROR: '{args.dir}' is not a valid directory")
     elif args.log is not None and args.dir is None and args.all is False and args.list is False and args.history is False:
         ### log passed: (args.log), no dir

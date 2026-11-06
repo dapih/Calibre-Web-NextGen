@@ -19,6 +19,15 @@ class CoordinatorBusy(RuntimeError):
     """A writer is active or the previous run still needs recovery."""
 
 
+def require_no_maintenance_journal(state_dir):
+    """Refuse normal ownership when maintenance state exists or is unreadable."""
+    try:
+        os.stat(Path(state_dir) / 'maintenance-journal.json', follow_symlinks=False)
+    except FileNotFoundError:
+        return
+    raise CoordinatorBusy('maintenance recovery is required before startup')
+
+
 class Coordinator:
     """Own one profile and retain a writer job until its descendants exit."""
 
@@ -30,6 +39,10 @@ class Coordinator:
         self._guard = threading.RLock()
         self._owner = ProfileLock(self._helper_path, self._state_dir / "controller.lock")
         try:
+            # Maintenance uses this same profile lock while recording its
+            # journal. Check before opening or creating the ledger so racing a
+            # newly journaled update cannot mutate the data it protects.
+            require_no_maintenance_journal(self._state_dir)
             self.ledger = Ledger(self._state_dir / "runtime-ledger.sqlite")
         except BaseException:
             self._owner.close()

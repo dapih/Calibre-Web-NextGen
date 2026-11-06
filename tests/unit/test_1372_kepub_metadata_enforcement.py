@@ -284,6 +284,78 @@ def _patch_enforce_dependencies(module, monkeypatch, book_dir, opf):
     return calls
 
 
+@pytest.mark.unit
+def test_native_strict_enforcement_rejects_polish_failure_even_if_title_already_matches(
+    enforcer_module, tmp_path, monkeypatch
+):
+    book_dir = tmp_path / "book"
+    book_dir.mkdir()
+    epub = book_dir / "book.epub"
+    with zipfile.ZipFile(epub, "w") as archive:
+        archive.writestr("content.opf", "<title>Title</title>")
+    (book_dir / "cover.jpg").write_bytes(b"cover")
+    opf = tmp_path / "metadata.opf"
+    opf.write_text("<package/>", encoding="utf-8")
+    _patch_enforce_dependencies(enforcer_module, monkeypatch, book_dir, opf)
+    monkeypatch.setattr(enforcer_module.subprocess, "run", lambda *a, **kw:
+                        types.SimpleNamespace(returncode=1, stdout="", stderr="polish failed"))
+
+    with pytest.raises(RuntimeError, match="not enforced"):
+        _bare_enforcer(enforcer_module).enforce_cover(str(book_dir), native_strict=True)
+
+
+@pytest.mark.unit
+def test_native_strict_enforcement_rejects_empty_supported_set(enforcer_module, tmp_path):
+    with pytest.raises(RuntimeError, match="no supported formats"):
+        _bare_enforcer(enforcer_module).enforce_cover(str(tmp_path), native_strict=True)
+
+
+@pytest.mark.unit
+def test_native_strict_rejects_nested_formats(enforcer_module, tmp_path):
+    nested = tmp_path / "nested"
+    nested.mkdir()
+    (nested / "book.epub").write_bytes(b"epub")
+    with pytest.raises(RuntimeError, match="nested supported"):
+        _bare_enforcer(enforcer_module).enforce_cover(str(tmp_path), native_strict=True)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("failed_step", ["checksum", "size"])
+def test_native_strict_rejects_failed_post_write_database_update(
+    enforcer_module, tmp_path, monkeypatch, failed_step
+):
+    book_dir = tmp_path / "book"
+    book_dir.mkdir()
+    (book_dir / "book.epub").write_bytes(b"epub")
+    (book_dir / "cover.jpg").write_bytes(b"cover")
+    opf = tmp_path / "metadata.opf"
+    opf.write_text("<package/>", encoding="utf-8")
+    _patch_enforce_dependencies(enforcer_module, monkeypatch, book_dir, opf)
+    monkeypatch.setattr(enforcer_module.Enforcer, "_recalculate_checksum_after_modification",
+                        lambda *args: failed_step != "checksum")
+    monkeypatch.setattr(enforcer_module.Enforcer, "_restat_format_size_after_modification",
+                        lambda *args: failed_step != "size")
+    with pytest.raises(RuntimeError, match="not enforced"):
+        _bare_enforcer(enforcer_module).enforce_cover(str(book_dir), native_strict=True)
+
+
+@pytest.mark.unit
+def test_native_strict_all_propagates_partial_failure(enforcer_module, tmp_path, monkeypatch):
+    book_dir = tmp_path / "book"
+    book_dir.mkdir()
+    (book_dir / "book.epub").write_bytes(b"epub")
+    (book_dir / "cover.jpg").write_bytes(b"cover")
+    opf = tmp_path / "metadata.opf"
+    opf.write_text("<package/>", encoding="utf-8")
+    _patch_enforce_dependencies(enforcer_module, monkeypatch, book_dir, opf)
+    monkeypatch.setattr(enforcer_module.subprocess, "run", lambda *a, **kw:
+                        types.SimpleNamespace(returncode=1, stdout="", stderr="polish failed"))
+    inst = _bare_enforcer(enforcer_module)
+    inst.calibre_library = str(tmp_path)
+    with pytest.raises(RuntimeError, match="not enforced"):
+        inst.enforce_all_covers(native_strict=True)
+
+
 # --- The messages that name the supported formats must derive from the list ---
 #
 # Adding kepub left three statements still reading "EPUB and AZW3": the

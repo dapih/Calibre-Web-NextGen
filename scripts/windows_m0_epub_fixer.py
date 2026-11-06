@@ -12,6 +12,7 @@ import zipfile
 
 from windows_m0_conversion import LibraryConversionDispatcher
 from windows_m0_dispatch import _digest
+from windows_m0_inbox import _flush_directory
 
 
 def _valid_epub(path):
@@ -61,7 +62,7 @@ class EpubFixerDispatcher(LibraryConversionDispatcher):
         try:
             manifest.write_text(json.dumps(record['intent']), encoding='utf-8')
             return self.owner.start(job_id, self.ingest.python,
-                                    ['-I', '-c', bootstrap, str(worker.parent), str(worker), str(self.ingest.library), str(self.ingest.database),
+                                    ['-I', '-B', '-c', bootstrap, str(worker.parent), str(worker), str(self.ingest.library), str(self.ingest.database),
                                      str(manifest), str(attempt), str(attempt / 'worker.log')], cwd=self.ingest.state,
                                     environment=self.ingest.environment, writer_lock_dir=self.ingest.writer_lock_dir,
                                     preflight=lambda: self.prepare(record['intent']['book_id']) == record['intent'])
@@ -76,6 +77,7 @@ class EpubFixerDispatcher(LibraryConversionDispatcher):
         if not record or record['operation'] != 'epub-fixer':
             return False
         self.ingest._check_settings()
+        durable = []
         with closing(sqlite3.connect(self.ingest.database.as_uri() + '?mode=ro', uri=True)) as db:
             if db.execute('PRAGMA quick_check').fetchone()[0] != 'ok':
                 return False
@@ -93,6 +95,25 @@ class EpubFixerDispatcher(LibraryConversionDispatcher):
                                   (item['book_id'], item['format'])).fetchall()
                 if len(rows) != 1 or rows[0][0] != path.stat().st_size:
                     return False
+                durable.extend((backup, path))
+        # Neither a successful worker exit nor a cached read establishes that
+        # publication and the retained original survived a power interruption.
+        # Flush bytes and their containing directories before the ledger can
+        # acknowledge completion; an error leaves the intent in review.
+        durable.append(self.ingest.database)
+        wal = self.ingest.database.with_name(self.ingest.database.name + '-wal')
+        if wal.exists():
+            durable.append(wal)
+        # The attempt and ingest-work directories can both be new in this run;
+        # flush their parents as well so the backup path itself is durable.
+        directories = {attempt.parent, attempt.parent.parent}
+        for path in durable:
+            with path.open('r+b') as stream:
+                stream.flush()
+                os.fsync(stream.fileno())
+            directories.add(path.parent)
+        for directory in directories:
+            _flush_directory(directory)
         return True
 
     def finish(self, job_id):
@@ -118,7 +139,7 @@ def _worker(library, database, manifest, attempt):
         shutil.copy2(original, stage)
         bootstrap = ("import runpy,sys; sys.path.insert(0,sys.argv[1]); "
                      "sys.argv=[sys.argv[2]]+sys.argv[3:]; runpy.run_path(sys.argv[0],run_name='__main__')")
-        completed = subprocess.run([sys.executable, '-I', '-c', bootstrap, str(fixer.parent), str(fixer),
+        completed = subprocess.run([sys.executable, '-I', '-B', '-c', bootstrap, str(fixer.parent), str(fixer),
                                     '--input_file', str(stage)],
                                    cwd=attempt, env=os.environ.copy(), timeout=1800)
         if completed.returncode or not _valid_epub(stage):

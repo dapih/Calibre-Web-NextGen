@@ -1046,6 +1046,7 @@ export interface SecurityOauthGeneric {
 export interface SecurityConfig {
   login_type: number;
   login_types: IdName[];
+  native_http_only?: boolean;
   ldap_auth_levels: IdName[];
   ldap_encryption_levels: IdName[];
   ldap: SecurityLdap;

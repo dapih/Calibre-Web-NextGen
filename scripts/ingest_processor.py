@@ -2204,7 +2204,7 @@ class NewBookProcessor:
                     "raise SystemExit(0 if audio is not None and duration > 0 else 1)"
                 )
                 result = subprocess.run(
-                    [sys.executable, *( ["-I"] if os.name == "nt" and os.environ.get("CWNG_NATIVE_MODE") == "1" else [] ), "-c", probe, str(staged_path)],
+                    [sys.executable, *( ["-I", "-B"] if os.name == "nt" and os.environ.get("CWNG_NATIVE_MODE") == "1" else [] ), "-c", probe, str(staged_path)],
                     check=True,
                     capture_output=True,
                     text=True,
@@ -3248,7 +3248,7 @@ def _truncate_overlong_ingest_name(filepath, max_length=150):
     return new_path
 
 
-def main(filepath=None):
+def main(filepath=None, *, native_completion=None):
     """Checks if filepath is a directory. If it is, main will be ran on every file in the given directory
     Inotifywait won't detect files inside folders if the folder was moved rather than copied"""
 
@@ -3517,6 +3517,15 @@ def main(filepath=None):
 
         if getattr(nbp, "acquisition_required", False) and not getattr(nbp, "acquisition_acknowledged", False):
             raise RetryIngestSourceError("Acquisition import incomplete; original retained")
+        if (native_completion is not None and nbp and nbp.last_added_book_ids and
+                nbp.input_format == 'epub' and nbp.is_target_format and
+                not nbp.is_kindle_epub_fixer and not getattr(nbp, 'acquisition_required', False) and
+                not nbp.cwa_settings.get('auto_backup_imports', True)):
+            # Receipts cover only original EPUB imports without conversion,
+            # fixer, acquisition or configured backups. A zero exit can also
+            # mean skipped/quarantined work or a failed backup; none proves a
+            # complete job. The wrapper records these IDs after clean return.
+            native_completion(list(nbp.last_added_book_ids))
         return 0
 
     except PreserveIngestSourceError as error:

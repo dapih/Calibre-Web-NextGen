@@ -78,13 +78,14 @@ class LibraryConversionDispatcher:
         attempt = self.ingest.work_root / ('convert-library-' + job_id + '-' + str(record['attempts'] + 1))
         attempt.mkdir()
         script = Path(__file__).with_name('convert_library.py').resolve(strict=True)
+        worker = Path(__file__).with_name('windows_m0_conversion_worker.py').resolve(strict=True)
         bootstrap = ("import runpy,sys; sys.path.insert(0,sys.argv[1]); "
-                     "sys.stdout=open(sys.argv[3],'a',encoding='utf-8',buffering=1); sys.stderr=sys.stdout; "
-                     "sys.argv=[sys.argv[2]]; runpy.run_path(sys.argv[0],run_name='__main__')")
+                     "sys.argv=sys.argv[2:]; runpy.run_path(sys.argv[0],run_name='__main__')")
         environment = dict(self.ingest.environment, CWNG_NATIVE_CANCEL_FILE=str(attempt / 'cancel'))
         try:
             return self.owner.start(job_id, self.ingest.python,
-                                    ['-I', '-c', bootstrap, str(script.parent), str(script), str(attempt / 'worker.log')],
+                                    ['-I', '-B', '-c', bootstrap, str(script.parent), str(worker), str(script), job_id,
+                                     str(record['attempts'] + 1), str(attempt / 'worker.log')],
                                     cwd=self.ingest.state, environment=environment,
                                     writer_lock_dir=self.ingest.writer_lock_dir,
                                     preflight=lambda: self.prepare() == record['intent'])

@@ -4,6 +4,243 @@
 > **Current status (2026-11-06):** N1–N6 pass for the local M0 proof. Validate the supported per-user installation and ordinary duplicate launches with the available Windows account. No other account, session, machine or VM is required, and no test requires installing or enabling Docker or WSL. Earlier entries are a chronological record and their status statements are superseded by the final pass sections.
 This is a proof record, not an installer or a passed release gate. The current acceptance criteria are in the [native specification](windows-native-specification.md).
 
+## M1–M3 continuation — 2026-11-06
+
+M1 now offers offline retry of an ingest only when it was never claimed and
+its original and staged inputs, storage, sidecars and duplicate state verify.
+An interrupted whole-library conversion may be confirmed only with a durable
+worker completion marker tied to the job, attempt and generation, plus
+verified inputs, outputs, database records, cancellation and backup state.
+Older markerless, failed-backup or ambiguous conversions remain in review.
+The real Windows pipeline passed with the new marker at `.m0/dceaa45`; one
+earlier run reached conversion completion but then hit an unbaselined control
+pipe `WinError 233` (`.m0/d1a83d5`). Maintenance journals are checked under
+the profile lock before the ledger is opened or the control key is changed.
+
+`--confirm-ingest JOB_ID` can verify a future interrupted ingest only when
+the real worker wrote a completion receipt bound to the job, generation and
+attempt after reporting actual book IDs. Receipt production is deliberately
+limited to an already-target EPUB with the Kindle fixer, acquisition and
+import backup disabled. Offline completion requires the old job to be gone,
+no cancellation, retained unchanged input and stage, an exact set of Calibre
+source-marker book IDs, one matching EPUB of the same size and SHA-256 for
+each book, an intact database and successful file/directory flushes. Changed,
+converted, backup-configured, historical markerless or ambiguous outcomes stay
+in review. A real unmodified EPUB was recovered after an owner handoff at
+`.m0/ir2e2f0d`; a real TXT-to-EPUB conversion with forced backup failure
+produced no receipt at `.m0/d78ed27`. The first proof simulates loss by closing
+the owner after worker exit before ledger completion; it does not prove
+physical power-loss durability. Ingest/controller/launcher tests passed 83,
+with one symlink privilege skip.
+
+M2 now includes local password recovery, optional login startup, native update
+controls, explicit LAN consent and an authenticated listener status. The LAN
+listener preserves the remote peer, rejects proxy-header login and fails closed
+for Public or unknown network profiles. The local port can be changed under
+offline ownership when occupied. Real Private-profile device reachability,
+Windows firewall behavior and the visible tray remain unverified on this host.
+Update downloads are user initiated and may be hash checked; the proposed feed
+has not been published. Native HTTPS/OAuth limitations are recorded below.
+
+M3 has verified checkpoints, an ownership-held maintenance session, and internal
+prepared-journal cancellation and guarded switching/rollback experiments. The
+switching experiment holds the maintenance, profile and writer gates, verifies
+the old payload and checkpoint, and keeps a journal that prevents launch while
+the profile and version pointer are changed. Rollback restores the old profile
+and pointer before removing that journal. Identity-bound temporary files allow
+interrupted replacement and cleanup to be retried without deleting unrelated
+files. Process-death tests cover the journal, profile, pointer and cleanup
+boundaries; 41 checkpoint and gate tests passed. A disposable installed profile
+checkpoint and a real-process prepared-journal re-entry proof also passed.
+An internal recovery CLI reconstructs the old controller from the checkpoint
+even when the live profile points to the candidate. A fresh direct PBS Python
+process, isolated with `-I -B`, checked its Python and native module origins and
+restored the old profile and pointer after a real process death at the switched
+pointer; the database stayed unchanged. The disposable fixture used real
+private ACLs and inert candidate files, and completed in 251 seconds. The
+opt-in test is `tests/unit/test_windows_native_checkpoint.py::test_old_payload_recovery_cli_after_switch_process_death`;
+set `CWNG_NATIVE_RECOVERY_PROOF=1`, `CWNG_NATIVE_PBS_RUNTIME` to the staged
+direct runtime, and `CWNG_NATIVE_TEST_HELPER` to the native helper before
+running it with pytest outside the sandbox. The switching interface remains
+unexposed: a trusted native launcher must authenticate the old runtime before
+starting Python, and candidate provenance, compatibility, migration and
+post-start validation must be established. It does not authorize or resume a
+release update.
+
+The passing invocation, from the worktree in PowerShell, was:
+
+```powershell
+$env:CWNG_NATIVE_TEST_HELPER = (Get-ChildItem '.m0/control-proof-*/cwng-native.dll' | Select-Object -First 1 -ExpandProperty FullName)
+$env:CWNG_NATIVE_PBS_RUNTIME = (Resolve-Path '.m0/installer-proof-exyy9406/installed-aea99c86/versions/4.1.62/runtime').Path
+$env:PYTHONPATH = (Resolve-Path '.m0/n1-runtime-locked/Lib/site-packages').Path
+$env:CWNG_NATIVE_RECOVERY_PROOF = '1'
+$env:PYTHONUTF8 = '1'
+& '.m0/pytest-env/Scripts/python.exe' -m pytest -q --override-ini addopts='' --confcutdir=tests/unit tests/unit/test_windows_native_checkpoint.py::test_old_payload_recovery_cli_after_switch_process_death
+```
+The bootstrap now holds a shared lifetime gate using a direct private Python
+interpreter; maintenance takes the matching exclusive gate. The proof installer
+has a fixed disposable target, separate identity and no upgrade/uninstall path.
+
+The refreshed experimental installer `.m0/installer-proof-i6msz50n/`
+produced `CWNG-Windows-Installer-PROOF.exe` (SHA-256
+`e1ae9d3d4828c52839db79e52526dec27b7e98953e8a212430b4c0fcfe50e071`).
+On its installed payload, isolated private-interpreter origin and launcher-import
+checks passed, and an uncontended backend proof exercised actual Calibre setup,
+selected credentials, Flask readiness and stop/restart with disposable data.
+After that lifecycle, all 17,628 installed payload files matched the staged
+SHA-256 inventory with no additional files; the payload had no `.pyc` files.
+The recorded inventory identifies an uncommitted source snapshot, not a Git
+commit or an authenticated release. Later source changes require affected
+checks to be rerun against a newly staged package.
+An earlier concurrent-test-load run exceeded the 60-second readiness budget;
+the subsequent uncontended run passed without increasing it. This package is
+not a release candidate and has not passed interactive installation, update,
+uninstall, real-device, provenance or redistribution acceptance.
+
+The combined native/authentication suite passed 255 tests with two skips;
+checkpoint/gate tests independently passed 26. A broader non-Docker run on
+Windows could not collect the Unix-only `fcntl` test; after excluding the two
+such tests it encountered a missing optional `flask_simpleldap` dependency.
+These results do not establish a full repository-suite pass. The two existing
+factory handler-count failures were reproduced on clean M0 commit `720199625`.
+M1 remains in progress, and I1–I7 and R1–R8 remain pending.
+
+## Native HTTPS and login limitation — 2026-11-06
+
+Native local readiness and LAN device URLs use HTTP. Before starting the web
+worker, the controller rejects saved certificate/key, HTTPS-only cookie and
+LDAP/OAuth login settings; unsupported native settings cannot be saved through
+the classic or SPA admin APIs. The native settings UI explains the limitation,
+and LAN consent identifies HTTP as unencrypted. OAuth also needs secure cookies
+and remains unavailable until native TLS, certificate validation, scheme-aware
+readiness/device URLs and login/recovery are implemented and verified. LDAP was
+already deferred. Container settings and behavior are unchanged.
+
+The real Windows controller proof enabled Kobo, verified pre-start HTTPS refusal
+and authenticated classic/SPA rejection without changing the database, and
+confirmed the annotation endpoint is registered. Independent real Windows
+spool tests covered durable staging, replay outcome, deduplication and directory
+flush failure. A locked, previously completed spool record now permits a new
+failed attempt to remain replayable within the normal quota; repeated retries
+reuse the unresolved record while the old reader remains open. These checks do
+not establish real-device or power-loss behavior. If the selected record or
+eviction victim is locked and the spool is already at its quota, staging can
+still fail open, including for an unrelated new PATCH: existing records remain,
+but that new attempt has no additional recovery ticket even when another record
+could potentially have been evicted.
+
+## M1 integration in progress — 2026-11-06
+
+### Local administrator recovery — 2026-11-06
+
+The launcher can start local administrator recovery with `--recover-password`
+or from the tray. If a job is active, the user can finish it, stop safely or
+cancel; the controller and tray close before the local password dialog starts.
+Recovery reacquires the exclusive profile owner, fences prior web and writer
+jobs, verifies setup-bound storage, and durably revokes LAN consent before an
+atomic app-database transaction changes the chosen administrator's password
+and invalidates that administrator's existing browser sessions. Books, other
+users, reading progress, device pairings and app passwords remain intact.
+Credentials are entered in masked local dialogs, never command-line arguments.
+
+To repeat the disposable real-profile proof outside the sandbox, from this
+worktree obtain a built M0 helper and run:
+
+```powershell
+$nativeRecoveryHelper = (Get-ChildItem '.m0/control-proof-*/cwng-native.dll' | Select-Object -First 1 -ExpandProperty FullName)
+& '.m0/n1-runtime-locked/Scripts/python.exe' -I scripts/windows-native-password-proof.py --helper $nativeRecoveryHelper
+```
+
+It creates a new disposable profile and real Calibre library, signs into the
+actual Flask admin view with a remembered browser session, recovers the password
+under the real profile lock and ACLs, and checks that the old cookie is rejected
+and the new password works after restart. It verifies the database and library
+retention and persisted LAN pause; it does not exercise a LAN listener or prove
+installed GUI acceptance. `tests/unit/test_windows_native_password.py` and
+`tests/unit/test_windows_native_password_entry.py` cover validation failures,
+pause failure, saved consent, and the stop-before-dialog launcher handoff.
+
+The experimental launcher now composes the native owner, named web job,
+readiness, writer coordination and scheduler. It supports duplicate activation,
+Stop/Start, bounded web restart and inspection of unresolved work. It validates
+setup-bound storage identities before starting Flask and rejects the default
+administrator password. Native mode disables the source updater and hides
+Docker-specific update controls. A disposable real Flask/Tornado proof covers
+readiness, authenticated web access, stop/restart, updater restrictions and a
+real web-process crash. Run `scripts/windows-m1-controller-proof.ps1` with the
+private runtime, helper and an existing disposable M0 fixture as its parameters.
+
+Experimental setup covers a local UI, stopped-source copy or a fresh private
+Calibre library, selected administrator credentials, held setup ownership,
+interruption recovery and completion-marker publication. The private-runtime
+`scripts/windows-native-first-run-to-launch-proof.py` exercised the setup
+backend, real ACL/sync-root checks, real Calibre and the configured controller
+on this Windows host outside the sandbox. It used disposable data; it did not
+exercise an installed package or the interactive UI. Cloud-root enumeration
+requires Windows access; unregistered third-party sync tools additionally rely
+on the user's confirmation. The tray message loop has simulated notification
+area tests; the available session has no Explorer process, so actual icon
+display and the graphical first-run-to-tray journey remain unverified.
+
+On Windows, a combined focused run of the native controller, first-run,
+launcher, profile, copy, setup UI, tray, update, ledger and conversion-staging
+tests passed (77 tests). A broader non-Docker repository run with UTF-8 enabled
+stopped during collection because `tests/unit/test_1915_restore_lock.py`
+imports the Unix-only `fcntl` module. This is an environment limitation; the
+full repository suite has not passed on this Windows host.
+
+Offline `--retry-reviewed JOB_ID` supports only an unstarted metadata-debounce
+record without a generation, after ownership, fencing, storage identity, book
+and duplicate checks. `--reset-restarts control|web` clears only the selected
+restart budget and leaves review records untouched. An offline completion action
+`--state <profile> --confirm-epub-repair <job-id>` can also resolve a stopped
+EPUB-repair job only when every output changed and
+the recorded originals, database paths, output sizes, ZIPs and storage identity
+all verify. Its shared verifier flushes checked files and directories before
+completion; a failed flush keeps the job in review. The affected real Windows
+application pipeline passed at `.m0/d222338`. These flush calls are not a
+physical power-loss proof. M1 is not complete: other started or ambiguous jobs
+still require operation-specific trusted recovery; do not replay them based
+only on a missing receipt.
+Installer-created private state/payload wiring, full native
+LAN and update controls, installed acceptance, and M3 maintenance remain open.
+The update-feed checker is experimental; its feed convention is not published.
+M0's PASS statuses and I1–I7/R1–R8 PENDING statuses remain unchanged.
+
+## Pending-plan review — 2026-11-06
+
+The specification and handoff now start continuation at M1, correcting stale
+planning text that still marked all 21 gates pending or instructed a new M0.
+N1–N6 retain their recorded local PASS status; I1–I7 and R1–R8 remain PENDING.
+No new runtime, installer or device result is claimed by this documentation review.
+
+- M1 integrates the existing owner/IPC, ledger, gate, watcher/scheduler and
+  lifecycle proofs. Update the existing writer audit and fixtures for changed
+  paths; no replacement framework or broad Linux rewrite is a prerequisite.
+- Synchronous edits keep their gate through commit/publication without adding
+  a durable job per request. Queued work and library-mutating children that can
+  outlive the caller retain durable ownership and reconciliation.
+- M2 handles setup/tray/runtime interactions. M3 handles installer, update,
+  restore and uninstall interactions. All fifteen reviewed outcomes are mapped
+  once to acceptance gates; R6 covers lifecycle instead of repeating all fifteen.
+- I2 uses representative supported compatibility/channel transitions. I4
+  covers distinct durable recovery decisions, with faults at relevant resource
+  operations, rather than every fault at every phase. Full restore, retention
+  and compatibility guards remain required; conditional migration cases are
+  tested only when applicable.
+- Coherent stopped copies and a guided local restore procedure can satisfy
+  maintenance recovery. Calibre database reconstruction stays deferred; no
+  backup-management UI, incremental backup service or generic migration engine
+  is required. The update feed carries update eligibility and installer identity;
+  complete build/provenance evidence remains a release responsibility.
+- Evidence is cumulative and may satisfy several gates. Candidate installation,
+  offline startup, a real pipeline and affected packaging/integration checks
+  remain required. Unchanged M0 experiments do not need blanket reruns. Physical
+  Kobo/KOReader acceptance, payload review and data-preservation checks remain.
+
+The following entries preserve the original investigation, including failures
+and requirements later superseded by the final PASS sections and this review.
+
 On 2026-11-04, Windows x64 build 26300 was used to run `scripts/windows-m0-n1.ps1 -BuildFaust`. The probe downloaded the repository-pinned python-build-standalone CPython 3.13.14 (release 20260623), verified SHA-256 `646254b53fbac69c1b3c25131c237c9136e9bbed7444123880cea8deaf555e1f`, extracted it under the ignored `.m0` directory, and ran it with Python isolated mode. Its reported interpreter and Python import paths were inside that private tree.
 
 The faust-cchardet 2.1.19 source download and build-dependency preparation succeeded, but wheel compilation failed because Microsoft Visual C++ 14.0 or later was unavailable. No `cl`, Visual Studio Installer `vswhere`, or usable `py` launcher was found during the initial probe. This establishes a missing build prerequisite on this machine; it does not establish whether the package can compile once a compiler is available. The exploratory pip build did not lock build dependencies and is not a reproducible build.
@@ -313,3 +550,28 @@ The supported native writer paths are now coordinated as recorded in the [writer
 The final combined real Windows application proof passed at `.m0/dfd6429`: owner-before-web startup, real metadata and cover edits, ingest, staged conversion, automatic and manual enforcement, whole-library conversion including busy/retry and cancellation, EPUB repair, refresh, restart and input retention. With the final gate, the real paused-Calibre caller/controller-death proof passed at `.m0/wdb0fab`, and the native helper, interrupted work, storage and injected suspend checks passed at `.m0/native-helper-ed7e257ed1ec469981e67fbb71ef0601`. Nineteen focused metadata-lock and ledger checks passed; existing focused checks for the affected writer families are recorded in the inventory/proof history. The audit uses direct source searches plus the static impact map, which has dynamic-call blind spots and excludes scripts/frontend; it is not a claim about third-party writers. Native database reconstruction is explicitly refused until the later coordinated maintenance/recovery work, and manual all-book enforcement of unsupported formats enters review. The normal packaged launcher and exact release acceptance remain later milestones.
 
 Five additional existing live-sync replacement tests in a broader Windows run failed when Windows refused to replace or remove an open SQLite database; their pre-change baseline was not established. This external live-sync scenario is not part of the supported local M0 storage proof.
+
+## Native recovery parent proof — 2026-11-06
+
+Prepared maintenance now saves a native-readable inventory next to the checkpoint and anchors its digest, old version and stable-bootstrap digest in the fenced journal. The experimental native verifier checks the complete old tree, file contents, extra entries, reparse points, hardlinks and named streams. A **test-only** native parent verifies those anchors before starting the direct old private interpreter, holds an exclusive maintenance gate, and inherits that gate and the pinned program-directory handles into the recovery child. The parent checks private profile/recovery anchor ACLs and rejects unrelated write access to old-payload objects; its child receives a minimal private-runtime/System32 environment. The existing normal bootstrap continues to reject every pending maintenance journal.
+
+The real Windows process-death test passed in 304 seconds: after interruption following the version-pointer switch, the native parent restored the old pointer and profile using the old PBS runtime and an inherited gate; the library database stayed unchanged. A corrupt inventory, writable anchor and writable payload file were refused before the final recovery, which used a poisoned host environment. A separate disposable fixture proved the inherited gate and program-directory pin survive termination of the native parent, rejected inherit-only write grants and accepted an unrelated read-only grant. The combined checkpoint, gate, inventory and small native-parent suite reported **36 passed, 13 skipped**; the large real-runtime proof was run separately and passed. Independent ACL and directory-rename probes also passed. The skipped cases are not covered by that combined result.
+
+The exact proof parent was `.m0/recovery-proof-parent-v4.exe`, SHA-256 `3883073693ae501206e44823c2fc65a4d690fa0f2abf5f22dbfa9d4d9e10bced`; the disposable test harness supplied and checked that digest independently. To repeat the recorded real-runtime test from this worktree on Windows, outside a restricted sandbox so owner-only ACLs remain usable:
+
+```powershell
+$env:CWNG_NATIVE_TEST_HELPER = (Resolve-Path '.m0/control-proof-0acca427faba4331950a099ba52e20eb/cwng-native.dll').Path
+$env:CWNG_NATIVE_RECOVERY_PROOF = '1'
+$env:CWNG_NATIVE_PBS_RUNTIME = (Resolve-Path '.m0/installer-proof-i6msz50n/installed/versions/4.1.62/runtime').Path
+$env:CWNG_NATIVE_PROOF_PARENT = (Resolve-Path '.m0/recovery-proof-parent-v4.exe').Path
+$env:CWNG_NATIVE_PROOF_PARENT_SHA256 = '3883073693ae501206e44823c2fc65a4d690fa0f2abf5f22dbfa9d4d9e10bced'
+.\.m0\n1-runtime\Scripts\python.exe -c "import sys; sys.path.insert(0, r'.m0/pytest-env/Lib/site-packages'); import pytest; raise SystemExit(pytest.main(['--noconftest', 'tests/unit/test_windows_native_checkpoint.py::test_old_payload_recovery_cli_after_switch_process_death', '-q']))"
+```
+
+The native parent and Python adapter are disposable proof code, not an installed recovery command. A release still needs reviewed native recovery integration and a reliable way to identify its matching installed bootstrap and payload. A hash alone does not authenticate the publisher; unsigned stable releases remain permitted under the existing distribution policy. Candidate execution, migrations, published update activation and installer acceptance remain unproven. The runtime used here comes from the earlier `.m0/installer-proof-i6msz50n` first-install snapshot, which predates later source changes; the test copied current recovery code into a disposable old-payload fixture and is not evidence that that earlier installer contains the final implementation.
+
+## Enforcement completion hardening — 2026-11-06
+
+Native automatic and manual enforcement now require every supported format's actual tool invocation to succeed and its format-size and enabled KOReader checksum updates to succeed. Native workers refuse nested supported formats; these and interrupted enforcement attempts remain in review. Completion verifies EPUB archive integrity and title, flushes the affected formats, cover and metadata files, database/WAL and containing directories, and rechecks library identity. This is not an independent verification of every metadata and cover semantic, so no offline completion of interrupted enforcement is exposed: zero exit, the existing title, and enforcement-history rows cannot establish that all changes succeeded.
+
+The unmodified real Windows dispatch pipeline passed with automatic and manual enforcement at `.m0/df9d7cb`. Twenty-seven focused tests passed, including failed polish with a matching previous title, partial manual enforcement, failed database updates and an injected flush failure. One earlier run (`.m0/df53fa7`) reached a transient null conversion-status response; the unmodified proof subsequently passed twice, but that status failure was not explained.

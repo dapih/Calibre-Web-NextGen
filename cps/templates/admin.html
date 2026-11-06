@@ -260,9 +260,11 @@
         <tbody>
           <tr id="current_version">
             <td>Calibre-Web NextGen</td>
-            <td>{% if cwa_release_url %}<a href="{{cwa_release_url}}" target="_blank" rel="noopener noreferrer">{{cwa_version}}</a>{% else %}{{cwa_version}}{% endif %} </td>
+            <td>{% if cwa_release_url and not cwng_native_mode %}<a href="{{cwa_release_url}}" target="_blank" rel="noopener noreferrer">{{cwa_version}}</a>{% else %}{{cwa_version}}{% endif %} </td>
             <td>
-              {% if cwa_is_outdated and cwa_latest_tag %}
+              {% if cwng_native_mode %}
+                <i>{{_('Check for updates from the CWNG tray.')}}</i>
+              {% elif cwa_is_outdated and cwa_latest_tag %}
                 <i style="color:#cc7b19;">{{_('Update available')}}: <strong>{{cwa_latest_tag}}</strong></i>
                 <button type="button" class="btn btn-primary btn-xs" data-toggle="modal" data-target="#updateNowDialog" style="margin-left: 8px;">{{ _('Update now') }}</button>
               {% else %}

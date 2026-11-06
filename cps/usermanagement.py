@@ -345,6 +345,11 @@ def user_login_required(func):
 
 def load_user_from_reverse_proxy_header(req):
     """Load user from reverse proxy header, optionally creating new users"""
+    # The native LAN listener marks requests at the WSGI seam, before any
+    # HTTP headers are processed. A device must authenticate normally and
+    # cannot impersonate a trusted reverse proxy by naming an auth header.
+    if req.environ.get('cwng.native_lan') is True:
+        return None
     rp_header_name = config.config_reverse_proxy_login_header_name
     if not rp_header_name:
         return None

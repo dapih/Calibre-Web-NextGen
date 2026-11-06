@@ -874,14 +874,14 @@ function SecurityConfigForm() {
 
       <fieldset className={styles.fieldset}>
         <legend>{t('Server SSL / HTTPS')}</legend>
-        <div className={styles.newRow}>
+        {f.native_http_only ? <p>{t('HTTPS, LDAP and OAuth are not yet supported in native Windows mode. Home-network connections use unencrypted HTTP.')}</p> : <div className={styles.newRow}>
           <label className={styles.checkField}><input type="checkbox" checked={f.ssl.use_https}
             onChange={(e) => setSsl('use_https', e.target.checked)} /><span>{t('Serve over HTTPS')}</span></label>
           <label className={styles.field}><span>{t('Certificate file path')}</span>
             <input value={f.ssl.certfile} onChange={(e) => setSsl('certfile', e.target.value)} /></label>
           <label className={styles.field}><span>{t('Key file path')}</span>
             <input value={f.ssl.keyfile} onChange={(e) => setSsl('keyfile', e.target.value)} /></label>
-        </div>
+        </div>}
       </fieldset>
 
       <fieldset className={styles.fieldset}>
