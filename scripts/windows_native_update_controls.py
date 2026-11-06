@@ -1,13 +1,16 @@
 """User-controlled update checks for the native Windows tray.
 
-Checks only the configured fork's feed. An installer is never downloaded or
-executed by this module; opening the verified release asset is user initiated.
+Checks only the configured fork's feed. Download and installer execution are
+user initiated; selected installers are rechecked immediately before launch.
 """
 import ctypes
+import hashlib
+import hmac
 import json
 import math
 import os
 from pathlib import Path
+import subprocess
 import threading
 import time
 import uuid
@@ -174,6 +177,20 @@ def _select_installer():
         root.destroy()
 
 
+def _run_verified_installer(path, candidate):
+    """Hold the selected file stable while rechecking its hash and starting it."""
+    from windows_m0_inbox import _locked_source
+
+    path = Path(path).resolve(strict=True)
+    if path.suffix.lower() != '.exe':
+        raise ValueError('Select a Windows installer executable.')
+    with _locked_source(path, path.parent, path) as source:
+        digest = hashlib.file_digest(source, 'sha256').hexdigest()
+        if not hmac.compare_digest(digest, candidate.sha256):
+            raise ValueError('The installer changed or does not match the feed SHA-256.')
+        subprocess.Popen([str(path)], close_fds=True)
+
+
 class UpdateControls:
     """Keep update network and dialog work off the controller's event loop."""
 
@@ -233,10 +250,17 @@ class UpdateControls:
             webbrowser.open(candidate.url)
         elif choice == 7 and not self._stop.is_set():
             selected = _select_installer()
-            if selected:
+            if selected and not self._stop.is_set():
                 if verify_installer(selected, candidate):
-                    _message('The selected installer matches the feed SHA-256. '
-                             'This does not establish publisher identity.')
+                    choice = _message('The selected installer matches the feed SHA-256. '
+                                      'This does not establish publisher identity.\n\nRun the installer now?',
+                                      0x4 | 0x20)
+                    if choice == 6 and not self._stop.is_set():
+                        try:
+                            _run_verified_installer(Path(selected), candidate)
+                        except (OSError, ValueError) as error:
+                            if not self._stop.is_set():
+                                _message('Could not start installer: ' + str(error), 0x10)
                 else:
                     _message('The installer SHA-256 does not match. Do not run this file.', 0x10)
 

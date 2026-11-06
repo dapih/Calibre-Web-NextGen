@@ -238,6 +238,36 @@ def test_matching_installer_is_checked_without_executing_it(tmp_path):
     assert 'does not establish publisher identity' in messages[-1]
 
 
+def test_verified_installer_runs_only_after_explicit_confirmation(tmp_path):
+    installer = tmp_path / 'download.exe'
+    installer.write_bytes(b'installer')
+    candidate = UpdateCandidate('4.2.0', 0, 'stable', 'https://github.com/example/setup.exe',
+                                hashlib.sha256(b'installer').hexdigest())
+    controls = UpdateControls(tmp_path, tmp_path)
+    with patch('windows_native_update_controls._message', side_effect=[7, 6]), \
+         patch('windows_native_update_controls._select_installer', return_value=str(installer)), \
+         patch('windows_native_update_controls._run_verified_installer') as run:
+        controls._show_candidate(candidate)
+    run.assert_called_once_with(installer, candidate)
+
+
+@pytest.mark.skipif(sys.platform != 'win32', reason='Windows installer execution')
+def test_installer_is_rechecked_before_launch(tmp_path):
+    from windows_native_update_controls import _run_verified_installer
+
+    installer = tmp_path / 'download.exe'
+    installer.write_bytes(b'installer')
+    candidate = UpdateCandidate('4.2.0', 0, 'stable', 'https://github.com/example/setup.exe',
+                                hashlib.sha256(b'installer').hexdigest())
+    with patch('windows_native_update_controls.subprocess.Popen') as run:
+        _run_verified_installer(installer, candidate)
+        run.assert_called_once_with([str(installer.resolve())], close_fds=True)
+        installer.write_bytes(b'changed')
+        with pytest.raises(ValueError, match='does not match'):
+            _run_verified_installer(installer, candidate)
+        assert run.call_count == 1
+
+
 def test_update_dialog_does_not_block_controller_and_close_cancels_check(tmp_path):
     entered, release, closed = threading.Event(), threading.Event(), threading.Event()
     manager = Mock()

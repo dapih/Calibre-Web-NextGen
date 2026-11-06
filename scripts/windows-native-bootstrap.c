@@ -16,8 +16,10 @@
 #define CAP 32768
 #ifdef CWNG_INSTALLER_PROOF
 #define DEFAULT_PROFILE L"CWNG-Installer-Proof"
+#define INSTALL_GATE L"CWNG-Installer-Proof-install.lock"
 #else
 #define DEFAULT_PROFILE L"CWNG"
+#define INSTALL_GATE L"CWNG-install.lock"
 #endif
 
 static void fail(const wchar_t *message) {
@@ -113,6 +115,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE previous, PWSTR cmd, int show)
     LPWSTR *argv = NULL; STARTUPINFOEXW si = {0}; PROCESS_INFORMATION pi = {0};
     const wchar_t *state = NULL;
     HANDLE gate = INVALID_HANDLE_VALUE;
+    HANDLE install_gate = INVALID_HANDLE_VALUE;
     SECURITY_ATTRIBUTES gate_attributes = {sizeof(SECURITY_ATTRIBUTES), NULL, TRUE};
     BY_HANDLE_FILE_INFORMATION gate_info;
     SIZE_T attributes_size = 0;
@@ -120,6 +123,17 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE previous, PWSTR cmd, int show)
     len = GetModuleFileNameW(NULL, root, CAP);
     if (!len || len >= CAP || !wcsrchr(root, L'\\')) { fail(L"Cannot determine the program directory."); return 1; }
     *wcsrchr(root, L'\\') = 0;
+    /* Every supported launch holds this shared gate until its child exits.
+       Uninstall holds it exclusively across removal, regardless of profile. */
+    len = GetEnvironmentVariableW(L"LOCALAPPDATA", path, CAP);
+    if (!len || len >= CAP || !combine(default_state, path, INSTALL_GATE)) goto error;
+    install_gate = CreateFileW(default_state, GENERIC_READ, FILE_SHARE_READ, &gate_attributes,
+                               OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OPEN_REPARSE_POINT, NULL);
+    if (install_gate == INVALID_HANDLE_VALUE || GetFileType(install_gate) != FILE_TYPE_DISK ||
+        !GetFileInformationByHandle(install_gate, &gate_info) ||
+        (gate_info.dwFileAttributes & (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT))) {
+        fail(L"The installation is busy or its launch lock is unavailable."); goto error;
+    }
     argv = CommandLineToArgvW(GetCommandLineW(), &argc);
     if (!argv) goto error;
     for (i = 1; i < argc; ++i) {
@@ -229,8 +243,9 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE previous, PWSTR cmd, int show)
         if (si.lpAttributeList) HeapFree(GetProcessHeap(), 0, si.lpAttributeList);
         si.lpAttributeList = NULL; goto error;
     }
+    HANDLE inherited[] = {gate, install_gate};
     if (!UpdateProcThreadAttribute(si.lpAttributeList, 0, PROC_THREAD_ATTRIBUTE_HANDLE_LIST,
-                                   &gate, sizeof(gate), NULL, NULL)) goto error;
+                                   inherited, sizeof(inherited), NULL, NULL)) goto error;
     si.StartupInfo.cb = sizeof(si);
     if (!CreateProcessW(python, command, NULL, NULL, TRUE, EXTENDED_STARTUPINFO_PRESENT,
                         NULL, payload, &si.StartupInfo, &pi)) {
@@ -243,7 +258,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE previous, PWSTR cmd, int show)
     CloseHandle(pi.hProcess);
     DeleteProcThreadAttributeList(si.lpAttributeList);
     HeapFree(GetProcessHeap(), 0, si.lpAttributeList);
-    CloseHandle(gate); LocalFree(argv);
+    CloseHandle(gate); CloseHandle(install_gate); LocalFree(argv);
     if (waited != WAIT_OBJECT_0 || child_exit != 0) {
         fail(L"CWNG could not start or stopped unexpectedly. Check the local diagnostics.");
         return 1;
@@ -255,6 +270,7 @@ error:
         HeapFree(GetProcessHeap(), 0, si.lpAttributeList);
     }
     if (gate != INVALID_HANDLE_VALUE) CloseHandle(gate);
+    if (install_gate != INVALID_HANDLE_VALUE) CloseHandle(install_gate);
     if (argv) LocalFree(argv);
     return 1;
 }

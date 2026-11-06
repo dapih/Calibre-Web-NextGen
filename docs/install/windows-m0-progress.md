@@ -8,6 +8,9 @@ This is a proof record, not an installer or a passed release gate. The current a
 
 M1 now offers offline retry of an ingest only when it was never claimed and
 its original and staged inputs, storage, sidecars and duplicate state verify.
+When reviewed work blocks startup, a local recovery prompt offers the existing
+applicable verification or retry actions. The same offline checks still decide
+whether an action is safe; unsupported or ambiguous work remains paused.
 An interrupted whole-library conversion may be confirmed only with a durable
 worker completion marker tied to the job, attempt and generation, plus
 verified inputs, outputs, database records, cancellation and backup state.
@@ -39,8 +42,10 @@ listener preserves the remote peer, rejects proxy-header login and fails closed
 for Public or unknown network profiles. The local port can be changed under
 offline ownership when occupied. Real Private-profile device reachability,
 Windows firewall behavior and the visible tray remain unverified on this host.
-Update downloads are user initiated and may be hash checked; the proposed feed
-has not been published. Native HTTPS/OAuth limitations are recorded below.
+Update downloads are user initiated. A selected installer can be hash checked
+and, after explicit confirmation, is checked again while held against changes
+before it is launched. The proposed feed has not been published. Native
+HTTPS/OAuth limitations are recorded below.
 
 M3 has verified checkpoints, an ownership-held maintenance session, and internal
 prepared-journal cancellation and guarded switching/rollback experiments. The
@@ -575,3 +580,12 @@ The native parent and Python adapter are disposable proof code, not an installed
 Native automatic and manual enforcement now require every supported format's actual tool invocation to succeed and its format-size and enabled KOReader checksum updates to succeed. Native workers refuse nested supported formats; these and interrupted enforcement attempts remain in review. Completion verifies EPUB archive integrity and title, flushes the affected formats, cover and metadata files, database/WAL and containing directories, and rechecks library identity. This is not an independent verification of every metadata and cover semantic, so no offline completion of interrupted enforcement is exposed: zero exit, the existing title, and enforcement-history rows cannot establish that all changes succeeded.
 
 The unmodified real Windows dispatch pipeline passed with automatic and manual enforcement at `.m0/df9d7cb`. Twenty-seven focused tests passed, including failed polish with a matching previous title, partial manual enforcement, failed database updates and an injected flush failure. One earlier run (`.m0/df53fa7`) reached a transient null conversion-status response; the unmodified proof subsequently passed twice, but that status failure was not explained.
+
+
+## Recovery controls and first-install preview — 2026-11-06
+
+The startup recovery dialog offers the existing safe offline verification and retry actions for supported jobs; other interrupted jobs remain in review. Diagnostics can open the configuration/log directory, and the update dialog can explicitly launch a downloaded installer after rechecking its verified hash. These controls do not complete the remaining installed M1 and M2 acceptance work.
+
+A development first-install preview installs a fixed per-user program. The bootstrap holds an installation-wide gate for eventual maintenance integration. An earlier isolated fixture exercised first install and a gate-protected uninstall with a small payload; that uninstall was removed because independent maintenance and recovery do not yet share the gate. The current preview compiles with uninstall disabled. The full application payload and uninstall registry registration have not been verified. Upgrade, repair, retained-profile reinstall, uninstall, reset and release acceptance remain pending.
+
+The acceptance text no longer requires a checkpoint on first install, a physical drive removal or actual sleep/logoff when the installed lifecycle handler can receive the same event, or exhaustive detection of third-party sync software. Physical e-reader acceptance and the underlying data-safety requirements remain.

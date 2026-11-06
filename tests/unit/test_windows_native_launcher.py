@@ -17,6 +17,37 @@ if os.name == 'nt':
 
 @unittest.skipUnless(os.name == 'nt', 'Windows native launcher')
 class LauncherLifecycleTests(unittest.TestCase):
+    def test_startup_offers_recovery_then_retries(self):
+        controller = object()
+        with patch.object(launcher, '_read_profile', return_value=controller), \
+             patch.object(launcher, '_launch_setup', return_value=True), \
+             patch.object(launcher, '_start_with_port_retry', side_effect=[
+                 launcher.CoordinatorBusy('unfinished work'), (controller, {'active': True})]), \
+             patch.object(launcher, '_recover_work', return_value=True) as recover, \
+             patch.object(launcher, '_message'):
+            self.assertEqual(launcher.main(['--state', 'unused']), 0)
+        recover.assert_called_once_with(controller, 'unfinished work')
+
+    def test_review_prompt_runs_only_the_selected_existing_verifier(self):
+        from contextlib import nullcontext
+
+        owner = SimpleNamespace(ledger=SimpleNamespace(list_jobs=lambda _state: [
+            {'id': 'job-one', 'operation': 'ingest', 'attempts': 0},
+            {'id': 'job-two', 'operation': 'convert-library', 'attempts': 1},
+        ]))
+        root = SimpleNamespace(withdraw=lambda: None, destroy=lambda: None)
+        controller = object()
+        with patch.object(launcher, '_offline_recovery_owner', return_value=nullcontext(owner)), \
+             patch.object(launcher, '_verify_recovery_storage'), \
+             patch('tkinter.Tk', return_value=root), \
+             patch('tkinter.simpledialog.askinteger', return_value=2), \
+             patch.object(launcher, '_message', side_effect=[6, 1]), \
+             patch.object(launcher, '_confirm_conversion', return_value='verified') as confirm, \
+             patch.object(launcher, '_retry_unstarted_ingest') as retry:
+            self.assertTrue(launcher._recover_work(controller, 'paused'))
+        confirm.assert_called_once_with(controller, 'job-two')
+        retry.assert_not_called()
+
     def test_read_profile_does_not_create_temp_during_maintenance(self):
         with tempfile.TemporaryDirectory() as directory:
             base = Path(directory)

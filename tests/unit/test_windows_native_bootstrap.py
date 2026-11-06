@@ -56,7 +56,7 @@ int WINAPI wWinMain(HINSTANCE a, HINSTANCE b, PWSTR c, int d) {
                     str(repo / 'scripts/windows-native-bootstrap.c'), '-lshell32', '-luser32', '-ladvapi32'], check=True)
     shutil.copy2(compiled_bootstrap, bootstrap)
     state = str(tmp_path / 'Personal Ω state') + '\\'
-    env = dict(os.environ, PYTHONPATH='hostile-modules')
+    env = dict(os.environ, PYTHONPATH='hostile-modules', LOCALAPPDATA=str(tmp_path))
     subprocess.run([str(bootstrap), '--state', state], env=env, check=True, timeout=10)
     output = payload / 'observed.txt'
     deadline = time.monotonic() + 10
@@ -109,6 +109,8 @@ int WINAPI wWinMain(HINSTANCE a, HINSTANCE b, PWSTR c, int d) {
         process.kill()
         process.wait(timeout=5)
         handle = kernel.CreateFileW(lock_file, 0xC0000000, 0, None, 3, 0x80, None)
+        assert handle == invalid and ctypes.get_last_error() == 32
+        handle = kernel.CreateFileW(str(tmp_path / 'CWNG-install.lock'), 0xC0000000, 0, None, 3, 0x80, None)
         assert handle == invalid and ctypes.get_last_error() == 32
     finally:
         release.touch()
@@ -210,7 +212,8 @@ def test_real_interpreter_keeps_gate_after_bootstrap_dies(tmp_path):
                     '-o', str(bootstrap), str(repo / 'scripts/windows-native-bootstrap.c'),
                     '-lshell32', '-luser32', '-ladvapi32'], check=True)
     state = tmp_path / 'private'
-    process = subprocess.Popen([str(bootstrap), '--state', str(state)])
+    process = subprocess.Popen([str(bootstrap), '--state', str(state)],
+                               env=dict(os.environ, LOCALAPPDATA=str(tmp_path)))
     kernel = ctypes.WinDLL('kernel32', use_last_error=True)
     kernel.CreateFileW.argtypes = [ctypes.c_wchar_p, ctypes.c_ulong, ctypes.c_ulong, ctypes.c_void_p,
                                    ctypes.c_ulong, ctypes.c_ulong, ctypes.c_void_p]

@@ -24,4 +24,14 @@ The experimental work is in branch `codex/windows-m0-proof`. The local worktree 
 3. Continue M3 with candidate identity and compatibility verification, journal recovery reachable through the installer/bootstrap, migrations, activation, rollback, retention and real uninstall/reset. Current checkpoints and prepared cancellation are internal groundwork; the fixed-target proof EXE is not a product installer. Unsigned stable releases remain allowed.
 4. Complete the pending I/R coverage against the installed candidate. Reuse a result across gates and carry forward unaffected evidence with a change-impact explanation. Review the exact payload, provenance, notices and servicing. Physical Kobo/KOReader and unsigned-package policy checks remain required; do not add cross-account or separate-machine requirements, or Docker/WSL setup.
 
+For storage/lifecycle acceptance, inject unavailable/replaced storage and
+logoff/suspend notifications through the installed handlers. A physical drive
+removal, logoff or sleep is not required. Registered cloud-sync roots are
+detectable; users must confirm other sync software because exhaustive detection
+is not possible. A new installation has no prior state to checkpoint.
+
+The bootstrap holds an installation-wide lifetime gate. The first-install
+preview has uninstall disabled until independent maintenance and recovery join
+that gate. Upgrade, repair and reinstall over a retained profile are also pending.
+
 The user explicitly authorized committing and pushing this M0 branch. That authorization does not itself publish an installer, binary wheel or release. The `.m0/` build and evidence outputs remain local and ignored.

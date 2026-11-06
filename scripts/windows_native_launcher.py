@@ -375,6 +375,68 @@ def _review_profile(controller):
         local.close()
 
 
+def _recover_work(controller, reason):
+    """Let the user choose an existing, independently verified recovery action."""
+    from tkinter import simpledialog
+    import tkinter as tk
+
+    try:
+        with _offline_recovery_owner(controller) as owner:
+            _verify_recovery_storage(controller)
+            jobs = owner.ledger.list_jobs('review')
+    except (CoordinatorBusy, OSError, ValueError) as error:
+        _message(str(error), 0x10)
+        return False
+    if not jobs:
+        _message(reason, 0x10)
+        return False
+
+    actions = []
+    for job in jobs:
+        operation = job['operation']
+        if operation == 'metadata-debounce' and job.get('attempts') == 0:
+            action, label = _retry_unstarted_metadata, 'Retry metadata notification'
+        elif operation == 'ingest' and job.get('attempts') == 0:
+            action, label = _retry_unstarted_ingest, 'Retry unstarted import'
+        elif operation == 'ingest':
+            action, label = _confirm_ingest, 'Verify completed import'
+        elif operation == 'convert-library':
+            action, label = _confirm_conversion, 'Verify completed conversion'
+        elif operation == 'epub-fixer':
+            action, label = _confirm_epub_repair, 'Verify completed EPUB repair'
+        else:
+            continue
+        actions.append((job['id'], label, action))
+    if not actions:
+        _message('Work needs review, but no automatic recovery is available. '
+                 'Your inputs are retained. Open the logs for details.', 0x10)
+        return False
+
+    root = tk.Tk()
+    root.withdraw()
+    try:
+        choices = '\n'.join(f'{index}. {label} ({job_id})'
+                            for index, (job_id, label, _) in enumerate(actions, 1))
+        selection = simpledialog.askinteger(
+            'Review unfinished work',
+            'CWNG stopped because work needs review. Choose an action, or cancel.\n\n' + choices,
+            parent=root, minvalue=1, maxvalue=len(actions),
+        )
+    finally:
+        root.destroy()
+    if selection is None:
+        return False
+    job_id, label, action = actions[selection - 1]
+    if _message(label + '?\n\nCWNG will verify the stored evidence before changing the queue.', 4 | 0x20) != 6:
+        return False
+    try:
+        _message(action(controller, job_id))
+    except (OSError, ValueError, RuntimeError, sqlite3.Error) as error:
+        _message('Work remains paused: ' + str(error), 0x10)
+        return False
+    return True
+
+
 def _change_port(controller, port):
     """Change the saved local port only while no existing owner can write."""
     if type(port) is not int or not 1 <= port <= 65535:
@@ -528,7 +590,14 @@ def main(argv=None):
     if args.confirm_ingest:
         _message(_confirm_ingest(controller, args.confirm_ingest))
         return 0
-    controller, duplicate = _start_with_port_retry(controller, args.state)
+    while True:
+        try:
+            controller, duplicate = _start_with_port_retry(controller, args.state)
+            break
+        except CoordinatorBusy as error:
+            if not _recover_work(controller, str(error)):
+                return 1
+            controller = _read_profile(args.state)
     if controller is None:
         return 0
     if duplicate is not None:
@@ -611,8 +680,15 @@ def main(argv=None):
                 _message('Library: ' + str(controller.library) + '\nIngest: ' + str(controller.ingest) +
                          '\nApplication state: ' + str(controller.state))
             elif command == 'diagnostics':
-                _message('Application state: ' + str(controller.state) + '\nCurrent status: ' + status +
-                         '\n\n' + _review_text(controller.local.owner.ledger))
+                log_dir = controller.state / 'config'
+                choice = _message('Application state: ' + str(controller.state) + '\nCurrent status: ' + status +
+                                  '\n\n' + _review_text(controller.local.owner.ledger) +
+                                  '\n\nOpen the default log folder?', 0x4 | 0x20)
+                if choice == 6:
+                    try:
+                        os.startfile(log_dir)
+                    except OSError as error:
+                        _message('Unable to open the log folder: ' + str(error), 0x10)
             elif command == 'recover-password':
                 if not running or controller.scheduler.active is None:
                     recover_requested = True
