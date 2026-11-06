@@ -1,5 +1,7 @@
 # Windows M0 handoff — 2026-11-06
 
+Historical: the project has moved to the [simpler Windows source installation](windows-source.md). The experimental installer preview described below was removed.
+
 M0's six native proof groups pass under the agreed local scope. M1 integration is in progress: a configured-profile controller and experimental launcher now run the real web process and scheduler, and first-run setup has an experimental implementation. See the [progress record](windows-m0-progress.md#m1-integration-in-progress--2026-11-06) for evidence and remaining gaps. The [specification's 2026-11-06 review](windows-native-specification.md#review-decisions--2026-11-06) describes the milestones and acceptance coverage. This is not a finished installer or release.
 
 ## Scope

@@ -599,8 +599,14 @@ The startup review dialog can also requeue an unprepared, never-started conversi
 
 Startup now offers an explicit reset of an exhausted control-service restart budget, using the existing offline fenced reset. Never-started conversion, manual-enforcement and EPUB-repair requests can be requeued for normal preparation; ambiguous started work remains in review. The focused launcher suite passed 18 tests. Setup now correctly says that closing the window continues startup.
 
-The installation-wide gate is shared by the launcher and standalone maintenance/recovery entry points; setup and uninstall acquire it exclusively. The preview installer supports first install, same-version repair, data-retaining uninstall and same-version reinstall. An isolated installer fixture exercised those operations. Cross-version updates and installed-candidate acceptance remain pending. The mandatory reset feature was removed from the specification; manual data removal is documented in [Windows native preview](windows-native-preview.md).
+The installation-wide gate is shared by the launcher and standalone maintenance/recovery entry points; setup and uninstall acquire it exclusively. The preview installer supports first install, same-version repair, data-retaining uninstall and same-version reinstall. An isolated installer fixture exercised those operations. Cross-version updates and installed-candidate acceptance remain pending. The mandatory reset feature was removed from the specification; the experimental installer preview was later removed in favor of source installation.
 
 A current-source full payload was staged in `.m0/installer-proof-op7zxgvr`, but compiling its installer ran out of disk space. The failed build produced no installer; a previous comparable EXE was about 1.18 GB, and only about 0.36 GB remained free. No production installation was changed.
 
 The freshly staged payload passed a direct disposable-profile setup, real Flask/controller/scheduler start, stop and restart. This did not exercise an installed package.
+
+Correction: the staged payload used the older baseline runtime, not the dependency versions declared by the current Windows pyproject. The direct startup result does not establish a valid release payload. Disposable local proof outputs were subsequently cleaned; historical `.m0` paths in this record may no longer exist.
+
+## Source-install direction — 2026-11-07
+
+The experimental bundled installer was removed. Windows source setup now uses Python and Calibre installed separately and the repository's published dependencies. A disposable Windows virtual environment installed the project, the web app served its login page, and the existing processor imported ordinary and nested sidecar inputs with Calibre. A real EPUB metadata enforcement also completed. Acquisition and bundled frontend assets remain unverified. The local proof directories were cleaned; their historical paths above are no longer available.

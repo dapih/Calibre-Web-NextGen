@@ -29,6 +29,7 @@ import queue
 # the module inside those functions, so Empty has to be imported by name to be reachable.
 from queue import Empty
 import os
+import sys
 import tempfile
 from datetime import datetime, timedelta
 import re
@@ -40,6 +41,19 @@ from werkzeug.exceptions import HTTPException
 from .web import cwa_get_num_books_in_library
 
 from cps.cwa_db_loader import load_cwa_db
+_SCRIPT_PYTHON = sys.executable if os.name == 'nt' else 'python3'
+
+
+def _script_options():
+    if os.name != 'nt':
+        return {}
+    environment = os.environ.copy()
+    library = getattr(config, 'config_calibre_dir', None)
+    if library:
+        environment['CWA_CALIBRE_LIBRARY_DIR'] = str(library)
+    return {'env': environment}
+
+
 _cwa_db_module = load_cwa_db()
 CWA_DB = _cwa_db_module.CWA_DB
 INTEGER_SETTINGS = _cwa_db_module.INTEGER_SETTINGS
@@ -369,7 +383,7 @@ def get_ingest_queue_size():
 def refresh_library(app):
     with app.app_context():  # Create app context for session
         ingest_dir = get_ingest_dir()
-        result = subprocess.run(['python3', os.path.join(constants.SCRIPTS_DIR, 'ingest_processor.py'), ingest_dir])
+        result = subprocess.run([_SCRIPT_PYTHON, os.path.join(constants.SCRIPTS_DIR, 'ingest_processor.py'), ingest_dir], **_script_options())
         return_code = result.returncode
 
         # Add empty list for messages in app context if a list doesn't already exist
@@ -1979,6 +1993,9 @@ def show_full_epub_fixer_with_paths_fixes():
 @login_required_if_no_ano
 @admin_required
 def cwa_flash_status():
+    if os.name == 'nt':
+        flash(_("Service status is unavailable on Windows. Check the console for background worker errors."), category="cwa_refresh")
+        return redirect(url_for('admin.admin'))
     result = subprocess.run([os.path.join(constants.SCRIPTS_DIR, 'check-cwa-services.sh')])
     services_status = result.returncode
 
@@ -2165,7 +2182,7 @@ def convert_library_start(queue):
     library_hold = None
     try:
         library_hold = content_server.hold_library()
-        cl_process = subprocess.Popen(['python3', os.path.join(constants.SCRIPTS_DIR, 'convert_library.py')])
+        cl_process = subprocess.Popen([_SCRIPT_PYTHON, os.path.join(constants.SCRIPTS_DIR, 'convert_library.py')], **_script_options())
     except Exception as error:
         try:
             with open(_service_log_path("convert-library.log"), "a") as failed_log:
@@ -2391,9 +2408,9 @@ def get_status():
 
 def epub_fixer_start(queue, input_file: str | None = None):
     if input_file:
-        ef_process = subprocess.Popen(['python3', os.path.join(constants.SCRIPTS_DIR, 'kindle_epub_fixer.py'), '--input_file', input_file])
+        ef_process = subprocess.Popen([_SCRIPT_PYTHON, os.path.join(constants.SCRIPTS_DIR, 'kindle_epub_fixer.py'), '--input_file', input_file], **_script_options())
     else:
-        ef_process = subprocess.Popen(['python3', os.path.join(constants.SCRIPTS_DIR, 'kindle_epub_fixer.py'), '--all'])
+        ef_process = subprocess.Popen([_SCRIPT_PYTHON, os.path.join(constants.SCRIPTS_DIR, 'kindle_epub_fixer.py'), '--all'], **_script_options())
     queue.put(ef_process)
 
 def is_epub_fixer_finished() -> bool:
@@ -2671,7 +2688,7 @@ def cover_enforcer_start(queue):
         # Popen dups the fd into the child, so closing the parent copy here is safe and
         # avoids leaking one descriptor per run.
         log_file = open(_service_log_path("cover-enforcer.log"), 'a')
-        ce_process = subprocess.Popen(['python3', os.path.join(constants.SCRIPTS_DIR, 'cover_enforcer.py'), '-all'], stdout=log_file, stderr=subprocess.STDOUT)
+        ce_process = subprocess.Popen([_SCRIPT_PYTHON, os.path.join(constants.SCRIPTS_DIR, 'cover_enforcer.py'), '-all'], stdout=log_file, stderr=subprocess.STDOUT, **_script_options())
     except Exception as e:
         # Nothing was ever put on the queue, so the watcher blocked forever at queue.get()
         # on cancel and the page polled a run that had never started. Write the end marker

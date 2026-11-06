@@ -1,5 +1,7 @@
 # Native Windows implementation specification and release gates
 
+Historical experimental specification. The current direction is the [simpler Windows source installation](windows-source.md); the milestones and installer requirements below are superseded.
+
 Status: **M0 proof complete; M1 in progress; M2–M5 pending**, 2026-11-06. The human approved the original implementation handoff on 2026-11-04, including the release-policy choices and the same mandatory bar for public prereleases. N1–N6 now pass within the local M0 scope; the fifteen installer/candidate groups I1–I7 and R1–R8 remain PENDING. See the [M0 handoff](windows-m0-handoff.md), [progress record](windows-m0-progress.md) and [writer inventory](windows-m0-writer-inventory.md) for evidence and limits.
 
 Decision ticket: [Agree the Windows implementation specification and release gates](https://github.com/dapih/Calibre-Web-NextGen/issues/8). Planning map: [Map native Windows installer for Calibre-Web-NextGen](https://github.com/dapih/Calibre-Web-NextGen/issues/1).
