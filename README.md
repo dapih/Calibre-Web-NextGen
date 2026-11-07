@@ -9,11 +9,13 @@
 
 Calibre-Web-NextGen (CWNG) is a self-hosted ebook library you use from a browser, an e-reader or any OPDS app. It's built on [Calibre-Web-Automated](https://github.com/crocodilestick/Calibre-Web-Automated) (CWA) and works as a drop-in replacement for its Docker image. Community fixes and new features ship in frequent releases.
 
+This repository forks [new-usemame/Calibre-Web-NextGen](https://github.com/new-usemame/Calibre-Web-NextGen) and adds a [portable Windows source installation](#windows-portable-source-installation). The release badges, Docker images, progress tracker and community links describe the upstream project. Issues and pull requests in this fork are limited to collaborators.
+
 ---
 
 ## Switch from upstream CWA
 
-Change one line in your compose file:
+For Docker installations, change one line in your compose file:
 
 ```diff
 - image: crocodilestick/calibre-web-automated:latest
@@ -81,6 +83,8 @@ Prefer separate pages with a sidebar? The same guides are on the searchable [doc
 - [Why this fork exists](#why-this-fork-exists)
 - [What's included](#whats-included)
 - [Quick start](#quick-start)
+  - [Windows portable source installation](#windows-portable-source-installation)
+  - [Docker Compose](#docker-compose)
 - [Full Docker Compose setup](#full-docker-compose-setup)
   - [What goes in each volume](#what-goes-in-each-volume)
   - [Running with Podman](#running-with-podman)
@@ -112,9 +116,9 @@ Prefer separate pages with a sidebar? The same guides are on the searchable [doc
 
 ## Why this fork exists
 
-The goal is to get fixes to users quickly. Community pull requests, including ones waiting in CWA's queue, are reviewed and merged here, and bugs reported here get fixed whether or not someone has sent a patch. Feature work follows what people ask for in the issue tracker, and all of it ships in regular releases.
+This fork makes the existing CWNG application run on Windows x64 with its own Python, Calibre and supporting tools. Configuration and the default ingest folder stay with the installation, so a stopped installation can move without running setup again. Existing application features come from upstream CWNG.
 
-The data format and configuration match upstream CWA, so switching images is reversible and needs no migration in either direction.
+The Docker instructions below use upstream CWNG's image. Its data format and configuration match upstream CWA, so switching those images is reversible and needs no migration in either direction.
 
 ---
 
@@ -135,7 +139,28 @@ CWNG is built on CWA and adds the changes listed in [`CHANGES-vs-upstream.md`](C
 
 ## Quick start
 
-You need Docker with Docker Compose.
+Choose the [Windows source installation](#windows-portable-source-installation) or [Docker Compose](#docker-compose).
+
+### Windows portable source installation
+
+Use Windows x64 and a writable folder. Setup needs internet access; it downloads the runtime and tools locally without Docker, WSL, a global Python/Calibre installation or a system PATH change.
+
+1. Clone or download this repository, then run [`install-windows.cmd`](install-windows.cmd).
+2. Run [`start-windows.cmd`](start-windows.cmd) and open [http://127.0.0.1:8083](http://127.0.0.1:8083).
+3. Sign in as `admin` / `admin123`. On the Database Configuration page, select an existing Calibre library containing `metadata.db`. To create an empty library, run [`create-windows-library.cmd`](create-windows-library.cmd) and select the directory it prints; the default is `.cwng-data\library`. The helper refuses to replace an existing library or use a nonempty folder.
+4. Change the admin password. Put copies of books in `.cwng-data\ingest` and wait for import/conversion to finish before checking the library. Ingest files are processed and removed; keep your originals elsewhere.
+
+The runtime lives in `.cwng-runtime`; settings, accounts, logs and the default ingest folder live in `.cwng-data`. Both folders are ignored by Git. Keep any libraries stored elsewhere out of version control too. Deep library roots use short directory junctions without drive letters; saved library paths stay real.
+
+**Restart or stop:** Wait for imports/conversions to finish, open the [Admin page](http://127.0.0.1:8083/admin/view), then choose **Restart** or **Shutdown** near the bottom and confirm. Restart waits for the Windows workers to finish before relaunching. After Shutdown, run `start-windows.cmd` to start again. Closing the browser leaves the app running.
+
+**Move the installation:** Stop the app, then move the whole folder, including `.cwng-runtime`, `.cwng-data` and any library inside it. Run `start-windows.cmd` at the destination; internal paths are adjusted automatically. Selected external libraries keep their configured locations.
+
+For an older Windows profile installation, use the explicit legacy-copy procedure in the [Windows guide](docs/install/windows-source.md#existing-windows-source-installations). The guide also covers [updates and removal](docs/install/windows-source.md#moving-updating-and-removal), [path limits](docs/install/windows-source.md#long-windows-library-paths) and [interrupted imports](docs/install/windows-source.md#interrupted-imports).
+
+### Docker Compose
+
+You need Docker with Docker Compose. This runs the upstream CWNG image.
 
 1. Make folders for your library:
 
@@ -296,7 +321,9 @@ Admin → Settings holds many optional switches: auto-convert formats, automatic
 
 ## Updating
 
-Updating means pulling the new image and recreating the container. Your library, settings and reading progress live in the mounted volumes, so they stay as they are.
+**Windows source installation:** Stop the app, back up `.cwng-data` and your library, update the source, then rerun `install-windows.cmd` and `start-windows.cmd`. Existing configuration and ingest data are retained. See the [Windows guide](docs/install/windows-source.md#moving-updating-and-removal).
+
+**Docker:** Pull the new image and recreate the container. Your library, settings and reading progress live in the mounted volumes, so they stay as they are.
 
 ```bash
 docker compose pull calibre-web && docker compose up -d calibre-web
@@ -642,6 +669,8 @@ After an upgrade, disposable cache entries are regenerated in the new default lo
 
 ## Troubleshooting
 
+For the Windows source installation, start with the [Windows guide](docs/install/windows-source.md). Application logs are in `.cwng-data\config\calibre-web.log`; import logs are in `.cwng-data\config\background-ingest.log`. The commands below that use `docker` apply to container installations.
+
 ### "Cover-file is not a valid image file, or could not be stored"
 
 Fixed in v4.0.13. If you still see it after upgrading, your book folders are probably owned by `root:root` from an older install. Run once:
@@ -752,6 +781,8 @@ Completion refreshes automatically on every push to `main`, via [`scripts/genera
 
 ## Contributing
 
+Issues and pull requests in this fork are limited to collaborators. The contribution resources below refer to upstream CWNG.
+
 - Bug reports: [open a bug issue](https://github.com/new-usemame/Calibre-Web-NextGen/issues/new?template=bug_report.yml). Reproduction steps, the version tag and a `docker logs` snippet help a lot.
 - Feature requests: [open a feature issue](https://github.com/new-usemame/Calibre-Web-NextGen/issues/new?template=feature_request.yml). The bar is low, and you don't need to judge whether it's in scope. Bugs come first for code work; feature requests shape what gets picked up when the bug queue is quiet.
 - Pull requests are welcome. The merge bar is "doesn't break anything that currently works", and changes touching auth, schema or dependencies get a closer review. Backports keep the original author's handle in the commit message.
@@ -792,6 +823,7 @@ The codebase itself is Calibre-Web and Calibre-Web-Automated, written over many 
 
 Built on:
 
+- [Calibre-Web-NextGen](https://github.com/new-usemame/Calibre-Web-NextGen) by [@new-usemame](https://github.com/new-usemame) and contributors, the direct upstream of this Windows fork.
 - [Calibre-Web-Automated](https://github.com/crocodilestick/Calibre-Web-Automated) by [@crocodilestick](https://github.com/crocodilestick) and contributors, the software this build is based on.
 - [Calibre-Web](https://github.com/janeczku/calibre-web) by [@janeczku](https://github.com/janeczku) and contributors, the web app underneath CWA.
 - [Calibre](https://github.com/kovidgoyal/calibre) by [@kovidgoyal](https://github.com/kovidgoyal), the library underneath all of it.
