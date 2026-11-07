@@ -6,7 +6,7 @@ Status: **source installation in progress**, 2026-11-07. This document supersede
 
 Add a Windows installation method for the existing Python application without Docker or WSL. Reuse the existing web application, dependencies, ingest processor and metadata enforcement. Keep Windows-specific code limited to what is needed for those workflows. A self-contained EXE, bundled Python or Calibre, native tray, generic recovery framework and custom local dependency wheels are not prerequisites.
 
-The current development target is 64-bit Windows with Python 3.13 and Calibre installed separately. Python dependencies come from the project's published requirements. ImageMagick and kepubify are separate tools for features that use them. The source installer creates a local `.venv`; it does not modify the global Python installation.
+The development target is 64-bit Windows. Setup obtains Python, Calibre and the tools needed by the application into an application-local directory and installs published Python dependencies into a local `.venv`. Users do not install Python or Calibre separately, and setup does not change the global PATH. Online downloads are acceptable; a large bundled EXE is not required.
 
 ## Expected behavior
 
@@ -18,9 +18,9 @@ The current development target is 64-bit Windows with Python 3.13 and Calibre in
 
 ## Remaining work
 
-- Complete and verify the source installation on a normal Windows machine with the stated prerequisites, including first-run library setup and the usual application workflows.
+- Complete and verify setup without preinstalled Python or Calibre, including first-run library setup and the usual application workflows.
 - Verify direct OPDS Book Sources acquisition through download and Calibre import on Windows. Other download-client integrations remain unavailable on Windows; do not present them as working until supported.
-- The source installer can build the newer frontend when Node.js is present and otherwise uses the classic interface. Confirm update and removal instructions without deleting user data.
+- Setup builds the newer frontend using an existing or application-local Node.js; if the build fails, explain whether an existing bundle or the classic interface will be used. Confirm update and removal instructions without deleting user data.
 - Resolve remaining Linux-specific service/status behavior where it affects actual Windows use. Continue simplifying or removing obsolete experimental code when it is no longer needed by the source path.
 
 ## Verification
