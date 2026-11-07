@@ -4,7 +4,7 @@ Run the existing application on Windows x64 without Docker, WSL or a global Pyth
 
 1. Put the source in a writable folder and run `install-windows.cmd`.
 2. Run `start-windows.cmd` and open the displayed local address.
-3. Configure a Calibre library through the web interface. To create a library, use the included `.cwng-runtime\calibre\calibre.exe`. Keep the library path short: the included Calibre rejects Windows library paths of 89 characters or more. A short external library folder is useful when the source checkout is deeply nested.
+3. Select an existing Calibre library on the Database Configuration page. To create an empty library, run `create-windows-library.cmd`; its default is `.cwng-data\library`. You can also pass a folder, for example `create-windows-library.cmd "D:\Books\My Library"`. Select the printed directory on the configuration page. The helper refuses to replace an existing library or use a nonempty folder.
 
 The existing first-run login is `admin` / `admin123`. Change that password before allowing network access. The launcher listens on the local computer by default. `start-windows.cmd -ListenAddress 0.0.0.0` allows network access when intended.
 
@@ -18,9 +18,16 @@ Until a library is configured, browser login uses the classic login and database
 | `.cwng-data\config` | Application databases, keys, logs, recovery markers and conversion scratch space |
 | `.cwng-data\ingest` | Default ingest folder; displayed on launch |
 | `.cwng-data\calibre-config` | Settings for the included Calibre tools |
+| `.cwng-data\library` | Default location for a new library made by the creation helper; existing selected libraries stay where they are |
 | `.cwng-data\location.json` | Previous application location, used to update internal paths after a move |
 
 The runtime uses its own Python directly, without a virtual environment or an editable source installation. Setup removes Python build metadata and frontend/Node build directories it creates; pre-existing developer directories remain.
+
+## Long Windows library paths
+
+The Windows integration gives Calibre a short directory junction when the real library path exceeds 75 characters. These aliases are cached under `%LOCALAPPDATA%\CWNG-Paths`; they point to the actual folders and contain no book copies or application configuration. The web interface and saved settings retain the real library location. Aliases are derived from the current location and recreated as needed after a move. No drive letter or system-wide setting is needed.
+
+Use `create-windows-library.cmd` to create a library in a deep folder. The bundled Calibre programs remain unchanged, so opening them directly outside this integration still uses Calibre's own path checks. Ordinary Windows filesystem/component limits still apply. An unusually long Windows user-cache path also needs an available Windows short name; the adapter reports an error if it cannot obtain a short enough cache path.
 
 ## Existing Windows source installations
 
@@ -38,7 +45,7 @@ If copying fails, the original folders remain. If local config/ingest folders al
 
 ## Moving, updating and removal
 
-Stop the application and wait for imports to finish before moving it. Move the entire application folder, including the hidden `.cwng-runtime` and `.cwng-data` folders, then run `start-windows.cmd` from the new location. Moving an installed folder does not require setup or a download. The launcher updates known filesystem settings that pointed inside the old application folder, including an internal library and tool paths. External library paths stay external; those libraries must still be available at their configured paths. Calibre's library path-length limit still applies at the destination.
+Stop the application and wait for imports to finish before moving it. Move the entire application folder, including the hidden `.cwng-runtime` and `.cwng-data` folders and any library inside it, then run `start-windows.cmd` from the new location. Moving an installed folder does not require setup or a download. The launcher updates known filesystem settings that pointed inside the old application folder, including an internal library and tool paths. External library paths stay external; those libraries must still be available at their configured paths. Windows Calibre aliases are regenerated from the destination path.
 
 A linked Git worktree also contains Git administrative references outside its folder. Use `git worktree move` when moving the development checkout and preserving Git operations. An application-only copy can run independently of Git; retain `cps`, `scripts`, `.cwng-runtime`, `.cwng-data`, `start-windows.cmd`, `VERSION`, `LICENSE` and `dirs.json`. Keep the full source checkout if you want to update or rebuild it with setup.
 

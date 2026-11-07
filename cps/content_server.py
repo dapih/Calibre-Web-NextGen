@@ -30,7 +30,8 @@ from contextvars import ContextVar
 from functools import wraps
 
 from . import config, constants, logger
-from .calibre_library_target import LibraryTarget, connect_host, library_id, server_target, server_ready
+from .calibre_library_target import (LibraryTarget, connect_host, library_id, server_target,
+                                     server_ready, local_library_path)
 from . import calibre_server_guard as ownership
 
 log = logger.create()
@@ -345,7 +346,7 @@ def server_arguments():
         # (measured with calibre 9.0). Forcing "basic" sent it base64-encoded
         # on every request whenever the listen address was not loopback.
         args += ["--enable-auth", "--userdb", userdb_path()]
-    args.append(setting("config_calibre_dir"))
+    args.append(local_library_path(setting("config_calibre_dir")))
     return args
 
 

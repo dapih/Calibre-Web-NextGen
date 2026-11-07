@@ -22,7 +22,8 @@ import sqlite3
 
 import app_paths
 import service_user
-from calibre_library_target import ownership, operation, private_tool, require_native_writer_lease
+from calibre_library_target import (ownership, operation, private_tool, require_native_writer_lease,
+                                    local_library_path)
 from cwa_db import CWA_DB
 import script_lock
 from kindle_epub_fixer import EPUBFixer
@@ -315,7 +316,7 @@ class LibraryConverter:
             print_and_log(f"[convert-library]: Retrieving book format information from library: {self.library_dir}")
             
         try:
-            args = [private_tool("calibredb"), "list", "--fields=id,formats", f"--library-path={self.library_dir}", "--for-machine"]
+            args = [private_tool("calibredb"), "list", "--fields=id,formats", f"--library-path={local_library_path(self.library_dir)}", "--for-machine"]
             
             if self.verbose:
                 print_and_log(f"[convert-library]: Running command: {' '.join(args)}")
@@ -604,7 +605,7 @@ class LibraryConverter:
             try: # Import converted book to library. As of V3.0.0, "add_format" is used instead of "add"
                 with operation(timeout=300):
                     self._run_streaming(
-                        [private_tool("calibredb"), "add_format", book_id, target_filepath, f"--library-path={self.library_dir}"],
+                        [private_tool("calibredb"), "add_format", book_id, target_filepath, f"--library-path={local_library_path(self.library_dir)}"],
                         env=self.calibre_env)
 
                 if self.cwa_settings['auto_backup_imports']:

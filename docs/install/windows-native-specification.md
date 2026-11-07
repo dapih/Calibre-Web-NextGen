@@ -8,6 +8,6 @@ Status: implemented and relocation checked, 2026-11-08. Run the existing project
 - Remove setup-created build downloads/directories and obsolete proof/installer material. Retain dependencies and source needed by the existing application, plus pre-existing developer directories.
 - Keep Linux/container defaults unchanged. No bundled installer framework, unrelated feature changes or broad test matrix.
 
-The move check uses disposable data and the real launcher/Calibre import. Calibre's existing Windows library-path limit still applies; moving a library to an excessively long path is unsupported. This is a portable source installation, not a published binary release or validation of every application feature.
+The move check uses disposable data and the real launcher/Calibre import. The Windows integration adapts long library roots through short directory junctions while retaining real paths in settings. The bundled Calibre is unchanged; direct vendor-program launches and ordinary filesystem limits remain outside this adapter. This is a portable source installation, not a published binary release or validation of every application feature.
 
 See [instructions](windows-source.md), [verification and cleanup](windows-m0-progress.md) and [handoff](windows-m0-handoff.md).

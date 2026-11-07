@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Dependency-free Calibre addressing policy shared by app and standalone tools."""
 import ipaddress
+import hashlib
 import os
 import time
 import json
@@ -8,8 +9,57 @@ import urllib.error
 import urllib.request
 from collections import namedtuple
 from pathlib import Path
+import stat
 
 LibraryTarget = namedtuple("LibraryTarget", "args stdin")
+
+
+def local_library_path(library_dir):
+    """Give Windows Calibre a short junction, retaining the real path in config.
+
+    Calibre budgets library roots at 75 characters even on long-path-aware
+    Windows. The junction is derived cache state, not a copy of the library.
+    Never replace an existing cache entry that points somewhere unexpected.
+    """
+    value = os.fspath(library_dir)
+    if not value or os.name != "nt" or value.lower().startswith(("http://", "https://")):
+        return value
+    actual = os.path.abspath(value)
+    if len(actual) <= 75:
+        return value
+    if not os.path.isdir(actual):
+        raise FileNotFoundError("Calibre library directory does not exist: " + actual)
+    import _winapi
+    cache_root = os.environ.get("LOCALAPPDATA")
+    if not cache_root:
+        raise RuntimeError("LOCALAPPDATA is required for the Windows Calibre path cache")
+    cache = Path(cache_root) / "CWNG-Paths"
+    cache.mkdir(parents=True, exist_ok=True)
+    if cache.lstat().st_file_attributes & stat.FILE_ATTRIBUTE_REPARSE_POINT:
+        raise RuntimeError("Calibre path cache must be a regular directory")
+    key = hashlib.sha256(os.path.normcase(actual).encode("utf-16-le")).hexdigest()[:12]
+    alias = cache / ("l" + key)
+    if not os.path.lexists(alias):
+        try:
+            _winapi.CreateJunction(actual, str(alias))
+        except FileExistsError:
+            pass  # Another worker may have created this exact alias.
+    if (alias.lstat().st_reparse_tag != stat.IO_REPARSE_TAG_MOUNT_POINT
+            or not os.path.samefile(alias, actual)):
+        raise RuntimeError("Calibre path cache entry has an unexpected target: " + str(alias))
+    result = str(alias)
+    if len(result) > 75:
+        # A long Windows account name may itself need its existing short form.
+        import ctypes
+        short_path = ctypes.WinDLL("kernel32", use_last_error=True).GetShortPathNameW
+        short_path.argtypes = [ctypes.c_wchar_p, ctypes.c_wchar_p, ctypes.c_uint32]
+        short_path.restype = ctypes.c_uint32
+        buffer = ctypes.create_unicode_buffer(32768)
+        size = short_path(result, buffer, len(buffer))
+        if not size or size >= len(buffer) or len(buffer.value) > 75:
+            raise RuntimeError("Windows user cache path is too long for Calibre")
+        result = buffer.value
+    return result
 
 
 def library_id(library_dir):
@@ -18,7 +68,7 @@ def library_id(library_dir):
     Mirrors Calibre's ``library_id_from_path``; both app and scripts use
     this implementation.
     """
-    return os.path.basename(str(library_dir).rstrip("/")).replace(" ", "_")
+    return os.path.basename(local_library_path(library_dir).rstrip("/\\")).replace(" ", "_")
 
 
 def connect_host(listen):
@@ -109,6 +159,15 @@ def server_ready(host, port, library_dir, timeout=0.5):
 
 def calibredb_command(command, target):
     """Preserve CLI arguments while preventing getpass from selecting a TTY."""
+    command = list(command)
+    for index, argument in enumerate(command):
+        if not isinstance(argument, str):
+            continue
+        if argument in ("--with-library", "--library-path") and index + 1 < len(command):
+            command[index + 1] = local_library_path(command[index + 1])
+        elif argument.startswith(("--with-library=", "--library-path=")):
+            option, value = argument.split("=", 1)
+            command[index] = option + "=" + local_library_path(value)
     if target.stdin is None:
         return command
     binary = Path(command[0])

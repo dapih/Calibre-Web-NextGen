@@ -40,6 +40,7 @@ LibraryTarget = _policy.LibraryTarget
 library_id = _policy.library_id
 connect_host = _policy.connect_host
 server_target = _policy.server_target
+local_library_path = _policy.local_library_path
 def private_tool(name):
     """Resolve native tools to their configured private files, never PATH/CWD."""
     if os.name != 'nt' or os.environ.get('CWNG_NATIVE_MODE') != '1':

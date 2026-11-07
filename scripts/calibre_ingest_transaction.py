@@ -16,6 +16,7 @@ callers preserve the prior file separately for that reason.
 
 import argparse
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -758,7 +759,11 @@ def run(args):
         os.environ["CALIBRE_OVERRIDE_DATABASE_PATH"] = args.database_path
     database = None
     try:
-        database = LibraryDatabase(args.library_path)
+        policy_file = Path(__file__).resolve().parents[1] / "cps" / "calibre_library_target.py"
+        policy_spec = importlib.util.spec_from_file_location("_cwng_calibre_paths", policy_file)
+        policy = importlib.util.module_from_spec(policy_spec)
+        policy_spec.loader.exec_module(policy)
+        database = LibraryDatabase(policy.local_library_path(args.library_path))
         cache = database.new_api
         acquisition = getattr(args, "acquisition", False)
         if args.action == "apply-folder-labels":
