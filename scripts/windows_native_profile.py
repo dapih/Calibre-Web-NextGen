@@ -105,3 +105,32 @@ def require_private_directory(path):
         for name in (*directories, *files):
             _require_private_path(Path(current) / name)
     return root.resolve(strict=True)
+
+
+def restrict_private_file(path):
+    """Restrict one owned file to the current user and Windows system accounts."""
+    from windows_m0_control import _is_appcontainer, _token_sid
+
+    path = Path(path).absolute()
+    if path.stat(follow_symlinks=False).st_file_attributes & 0x400:
+        raise PermissionError('private file cannot be a reparse point')
+    owner = _token_sid(1)
+    container = f'(A;;FA;;;{_token_sid(31)})' if _is_appcontainer() else ''
+    sddl = f'D:P(A;;FA;;;{owner})(A;;FA;;;SY)(A;;FA;;;BA){container}'
+    adv = ctypes.WinDLL('advapi32', use_last_error=True)
+    kernel = ctypes.WinDLL('kernel32', use_last_error=True)
+    ptr = ctypes.c_void_p
+    adv.ConvertStringSecurityDescriptorToSecurityDescriptorW.argtypes = [
+        wintypes.LPCWSTR, wintypes.DWORD, ctypes.POINTER(ptr), ctypes.POINTER(wintypes.DWORD)]
+    adv.ConvertStringSecurityDescriptorToSecurityDescriptorW.restype = wintypes.BOOL
+    adv.SetFileSecurityW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, ptr]
+    adv.SetFileSecurityW.restype = wintypes.BOOL
+    kernel.LocalFree.argtypes = [ptr]
+    descriptor = ptr()
+    if not adv.ConvertStringSecurityDescriptorToSecurityDescriptorW(sddl, 1, ctypes.byref(descriptor), None):
+        raise ctypes.WinError(ctypes.get_last_error())
+    try:
+        if not adv.SetFileSecurityW(str(path), 0x80000004, descriptor):
+            raise ctypes.WinError(ctypes.get_last_error())
+    finally:
+        kernel.LocalFree(descriptor)

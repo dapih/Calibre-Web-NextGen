@@ -3,6 +3,7 @@
 from dataclasses import asdict
 from functools import wraps
 import os
+import sys
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
@@ -29,6 +30,7 @@ def _error(code, status):
         'conflict':'This request cannot be changed in its current state',
         'acquisition_unavailable':'Acquisition is not ready; ask an administrator to check its status',
         'needs_review':'Legacy acquisition permissions need administrator review',
+        'unsupported_on_windows':'This download client is not available on Windows; use an OPDS source',
         'source_unavailable':'The catalog could not be read', 'rate_limit_exceeded':'Too many requests; try again later',
         'private_network_not_allowed':'Only a home or local network range can be allowed. '
             'Loopback, link-local and cloud metadata addresses cannot.',
@@ -146,8 +148,8 @@ def _run_private_blocking(operation):
 def worker_available():
     """Runtime preconditions only: a catalog probe does not prove import success.
 
-    First slice requires the existing s6 ingest service. Unknown/non-s6 runtimes
-    are unavailable rather than accepting jobs into an unverified queue.
+    Linux requires the existing s6 service. Windows requires its running source
+    ingest worker, with no unfinished import awaiting review.
     """
     from ..schedule import acquisition_scheduler_available
     from ..cwa_functions import get_ingest_dir
@@ -180,11 +182,17 @@ def worker_available():
         if not config.config_calibre_dir or not Path(config.config_calibre_dir).is_dir(): reasons.append('library_unavailable')
     except (OSError,TypeError): reasons.append('library_unavailable')
     try:
-        running=_run_private_blocking(_check_s6_service_status).get('cwa-ingest-service') == 'up'
+        if os.name == 'nt':
+            worker=sys.modules.get('windows_background_ingest')
+            running=bool(worker and worker.ingest_available())
+        else:
+            running=_run_private_blocking(_check_s6_service_status).get('cwa-ingest-service') == 'up'
     except Exception:
         running=False
     if not running: reasons.append('ingest_service_unavailable')
-    return {'available':not reasons,'reasons':reasons}
+    status={'available':not reasons,'reasons':reasons}
+    if os.name == 'nt': status['supported_adapters']=['opds']
+    return status
 
 
 
@@ -193,7 +201,7 @@ CONFIGURATORS = {'opds': connection_config, 'newznab': indexer_config, 'sabnzbd'
 
 
 def _require_connection(repo, connection_id, *, include_disabled=False, catalog=False):
-    kinds = ('opds', 'newznab') if catalog else tuple(CONFIGURATORS)
+    kinds = (('opds',) if os.name == 'nt' else ('opds', 'newznab')) if catalog else tuple(CONFIGURATORS)
     rows = [row for row in repo.list_connections(include_disabled=include_disabled)
         if row.id == connection_id and row.adapter in kinds]
     if not rows:
@@ -282,6 +290,7 @@ def acquisition_admin_connections():
     body=_json({'label','adapter','config'})
     adapter = body.get('adapter', 'opds')
     if adapter not in CONFIGURATORS: raise admission.AdmissionError('invalid_request')
+    if os.name == 'nt' and adapter != 'opds': return _error('unsupported_on_windows',400)
     if not isinstance(body.get('label'),str) or not body['label'].strip() or len(body['label'])>200:
         raise admission.AdmissionError('invalid_request')
     with runtime.open_repository(ub.app_DB_path,initialize_key=True) as repo:
@@ -314,6 +323,8 @@ def acquisition_admin_connection(connection_id):
             if body['expected_revision'] != row.revision:
                 raise ConnectionChanged('Connection changed since loading the form')
         if 'enabled' in body:
+            if os.name == 'nt' and row.adapter != 'opds' and body['enabled']:
+                return _error('unsupported_on_windows',400)
             if not isinstance(body['enabled'], bool): raise admission.AdmissionError('invalid_request')
             if body['enabled'] and admission.instance_state(ub.app_DB_path)['migration_status']!='ready':
                 return _error('needs_review',409)
@@ -368,6 +379,8 @@ def acquisition_admin_probe(connection_id):
         with runtime.open_repository(database) as repo:
             row = _require_connection(repo,connection_id,include_disabled=True)
             value = repo.connection_config(connection_id,include_disabled=True).config
+            if os.name == 'nt' and row.adapter != 'opds':
+                return None
             if row.adapter in CLIENT_KINDS:
                 return CLIENTS[row.adapter](value).probe()
             if row.adapter == 'newznab':
@@ -377,7 +390,10 @@ def acquisition_admin_probe(connection_id):
                 result['client_verified'] = True
                 return result
             return CatalogService(repo).probe(value)
-    return jsonify(_run_private_blocking(probe))
+    result=_run_private_blocking(probe)
+    if result is None:
+        return _error('unsupported_on_windows',400)
+    return jsonify(result)
 
 
 @api_v1.route('/acquisition',methods=['GET'])
@@ -385,7 +401,7 @@ def acquisition_admin_probe(connection_id):
 def acquisition_bootstrap():
     role=admission.account_role(ub.app_DB_path,_owner()) or 0
     with runtime.open_repository(ub.app_DB_path) as repo:
-        return jsonify({'connections':[asdict(row) for row in repo.list_connections() if row.adapter in ('opds', 'newznab')],
+        return jsonify({'connections':[asdict(row) for row in repo.list_connections() if row.adapter in (('opds',) if os.name == 'nt' else ('opds', 'newznab'))],
             'can_acquire':bool(role & constants.ROLE_ACQUISITION_AUTO_APPROVE),'runtime':worker_available()})
 
 
@@ -424,6 +440,8 @@ def acquisition_jobs():
     with runtime.open_repository(ub.app_DB_path) as repo:
         if request.method=='GET': return jsonify({'jobs':[_job(repo,row) for row in repo.list_jobs(_owner())]})
         body=_json({'connection_id','offer_id','idempotency_key','add_to_my_library'})
+        if os.name == 'nt':
+            _require_connection(repo,body.get('connection_id'),catalog=True)
         job=admission.create_request(repo,_owner(),connection_id=body.get('connection_id'),
             offer_id=body.get('offer_id'),idempotency_key=body.get('idempotency_key'),
             add_to_my_library=body.get('add_to_my_library',True))
@@ -441,6 +459,8 @@ def acquisition_job(job_id):
 def acquisition_bundle_books(job_id):
     if request.method == 'POST' and not worker_available()['available']:
         return _error('acquisition_unavailable',503)
+    if request.method == 'POST' and os.name == 'nt':
+        return _error('unsupported_on_windows',400)
     with runtime.open_repository(ub.app_DB_path) as repo:
         if request.method == 'GET':
             return jsonify(repo.bundle_choices(_owner(),job_id))

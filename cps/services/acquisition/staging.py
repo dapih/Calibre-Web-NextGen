@@ -157,7 +157,21 @@ def validate_book(path, media_type, *, max_bytes=100 * 1024 * 1024):
     return 'epub'
 
 
+def _publish_no_replace(source, destination):
+    try:
+        os.link(source, destination)
+    except PermissionError:
+        if os.name != 'nt':
+            raise
+        # Unlike POSIX rename, Windows rename refuses an existing destination.
+        os.rename(source, destination)
+
+
 def _sync_directory(path):
+    if os.name == 'nt':
+        from windows_m0_inbox import _flush_directory
+        _flush_directory(path)
+        return
     fd = os.open(path, os.O_RDONLY)
     try:
         os.fsync(fd)
@@ -175,14 +189,21 @@ def persist_capability(path, token):
         with tempfile.NamedTemporaryFile(mode='w', prefix='.publication-token-', dir=path.parent,
                                          delete=False) as stream:
             temporary = Path(stream.name)
-            os.fchmod(stream.fileno(), 0o600)
+            if os.name == 'nt':
+                from windows_native_profile import restrict_private_file
+                restrict_private_file(temporary)
+            else:
+                os.fchmod(stream.fileno(), 0o600)
             stream.write(token)
             stream.flush()
             os.fsync(stream.fileno())
         try:
-            os.link(temporary, path)
+            _publish_no_replace(temporary, path)
         except FileExistsError:
-            if _regular(path).stat().st_size > 128 or path.read_text() != token:
+            _regular(path)
+            if os.name == 'nt':
+                restrict_private_file(path)
+            if path.stat().st_size > 128 or path.read_text() != token:
                 raise StagingError('publication_token_conflict') from None
         _sync_directory(path.parent)
     finally:
@@ -209,7 +230,11 @@ def publish(source, ingest_dir, permit, extension, *, checkpoint=lambda: None):
     payload = {'action': 'acquisition_import', 'job_id': permit.job_id,
                'publication_token': permit.token, 'staging_key': permit.staging_key}
     def check_sidecar():
-        if _regular(sidecar).stat().st_size > 16384:
+        _regular(sidecar)
+        if os.name == 'nt':
+            from windows_native_profile import restrict_private_file
+            restrict_private_file(sidecar)
+        if sidecar.stat().st_size > 16384:
             raise StagingError('publication_conflict')
         try:
             if json.loads(sidecar.read_text()) != payload:
@@ -226,26 +251,31 @@ def publish(source, ingest_dir, permit, extension, *, checkpoint=lambda: None):
         temporary = Path(temporary)
         book, manifest = temporary / 'book.part', temporary / 'manifest.part'
         with source.open('rb') as incoming, book.open('xb') as outgoing:
-            os.fchmod(outgoing.fileno(), 0o600)
+            if os.name != 'nt':
+                os.fchmod(outgoing.fileno(), 0o600)
             shutil.copyfileobj(incoming, outgoing, 256 * 1024)
             outgoing.flush()
             os.fsync(outgoing.fileno())
         if digest(book) != permit.source_sha256:
             raise StagingError('source_changed')
         with manifest.open('x') as stream:
-            os.fchmod(stream.fileno(), 0o600)
+            if os.name == 'nt':
+                from windows_native_profile import restrict_private_file
+                restrict_private_file(manifest)
+            else:
+                os.fchmod(stream.fileno(), 0o600)
             json.dump(payload, stream, separators=(',', ':'))
             stream.flush()
             os.fsync(stream.fileno())
         checkpoint()
         try:
-            os.link(manifest, sidecar)
+            _publish_no_replace(manifest, sidecar)
         except FileExistsError:
             check_sidecar()
         _sync_directory(directory)
         checkpoint()
         try:
-            os.link(book, destination)
+            _publish_no_replace(book, destination)
         except FileExistsError:
             if digest(destination) != permit.source_sha256:
                 raise StagingError('publication_conflict') from None

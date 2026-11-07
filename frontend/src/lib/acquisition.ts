@@ -25,6 +25,8 @@ export interface AcquisitionRuntime {
   available: boolean;
   /** Machine-readable preconditions that are not met, e.g. `ingest_unwritable`. */
   reasons: string[];
+  /** Omitted by servers that support all connection types. */
+  supported_adapters?: string[];
 }
 
 export interface AcquisitionConnection {

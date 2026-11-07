@@ -43,6 +43,7 @@ export function useAcquisitionErrorText(): (code: string) => string {
   const t = useT();
   return useCallback((code: string) => {
     switch (code) {
+      case 'unsupported_on_windows': return t('This download client is not available on Windows; use an OPDS source.');
       case 'needs_auth': return t('The source or download client rejected its credentials. Ask an administrator to check the credential.');
       case 'source_busy': return t('The source asked us to wait.');
       case 'book_category_unavailable': return t('The indexer does not advertise this book category.');

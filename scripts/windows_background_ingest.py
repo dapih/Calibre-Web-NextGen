@@ -17,6 +17,16 @@ from windows_m0_inbox import _kernel, _FileInformation, _INVALID
 from windows_source_library import configured_library
 
 
+_active_worker = None
+
+
+def ingest_available():
+    worker = _active_worker
+    return bool(worker and worker._thread and worker._thread.is_alive()
+                and not worker._stop.is_set()
+                and not (worker.state / 'unfinished-ingest.json').exists())
+
+
 _FORMATS = set('epub mobi azw3 azw azw4 pdf txt rtf cbz cbr cb7 cbc fb2 fbz docx html htmlz lit lrf odt prc pdb pml rb snb tcr txtz kepub m4b m4a mp4 acsm lcpl chm djvu kfx kfx-zip'.split())
 _set_file_information = _kernel.SetFileInformationByHandle
 _set_file_information.argtypes = [wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p, wintypes.DWORD]
@@ -71,11 +81,16 @@ class BackgroundIngest:
             raise RuntimeError('background ingest already started')
         self._thread = threading.Thread(target=self._run, name='windows-ingest', daemon=True)
         self._thread.start()
+        global _active_worker
+        _active_worker = self
 
     def stop(self):
         self._stop.set()
         if self._thread is not None:
             self._thread.join()
+        global _active_worker
+        if _active_worker is self:
+            _active_worker = None
 
     def _run(self):
         try:

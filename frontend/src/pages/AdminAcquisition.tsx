@@ -91,6 +91,8 @@ export function AdminAcquisition() {
 
   const enabled = !!settings.data?.enabled;
   const migration = settings.data?.migration_status;
+  const allowedAdapters = settings.data?.runtime.supported_adapters;
+  const adapterAvailable = (kind: string) => !allowedAdapters || allowedAdapters.includes(kind) || (!!editing && adapter === kind);
 
   // The grants and approval endpoints answer 404 while the feature is off, so
   // don't ask for them until it is on.
@@ -157,7 +159,9 @@ export function AdminAcquisition() {
     },
     onError: (error) => {
       const code = errorCode(error);
-      if (code === 'credential_required_for_new_origin') {
+      if (code === 'unsupported_on_windows') {
+        setFormError(protocolErrorText(code));
+      } else if (code === 'credential_required_for_new_origin') {
         setFormError(t('Re-enter the credential when changing the connection to a different server.'));
       } else if (code === 'connection_changed') {
         setFormError(t('Connection changed. Reload its settings before saving.'));
@@ -207,7 +211,8 @@ export function AdminAcquisition() {
       failed('connection',
         // Switching a catalog on re-checks the migration, so this is the
         // likeliest refusal, not a missing row.
-        code === 'needs_review' ? t('Legacy acquisition permissions need review before a catalog can be made available.')
+        code === 'unsupported_on_windows' ? protocolErrorText(code)
+          : code === 'needs_review' ? t('Legacy acquisition permissions need review before a catalog can be made available.')
           : code === 'not_found' ? t('That catalog no longer exists.')
             : t('The catalog could not be changed.'));
       refresh('connections');
@@ -529,11 +534,11 @@ export function AdminAcquisition() {
                 setDraft({ ...EMPTY_CONNECTION, label: draft.label, category: ['opds', 'newznab'].includes(event.target.value) ? '7020' : 'books', auth_kind: ['nzbget', 'qbittorrent', 'transmission'].includes(event.target.value) ? 'basic' : 'none' });
               }}>
                 <option value="opds">{t('OPDS catalog')}</option>
-                <option value="newznab">{t('Newznab / Torznab indexer')}</option>
-                <option value="sabnzbd">{t('SABnzbd download client')}</option>
-                <option value="nzbget">{t('NZBGet download client')}</option>
-                <option value="qbittorrent">{t('qBittorrent download client')}</option>
-                <option value="transmission">{t('Transmission download client')}</option>
+                {adapterAvailable('newznab') && <option value="newznab">{t('Newznab / Torznab indexer')}</option>}
+                {adapterAvailable('sabnzbd') && <option value="sabnzbd">{t('SABnzbd download client')}</option>}
+                {adapterAvailable('nzbget') && <option value="nzbget">{t('NZBGet download client')}</option>}
+                {adapterAvailable('qbittorrent') && <option value="qbittorrent">{t('qBittorrent download client')}</option>}
+                {adapterAvailable('transmission') && <option value="transmission">{t('Transmission download client')}</option>}
               </select>
             </label>
             {adapter === 'newznab' && <>

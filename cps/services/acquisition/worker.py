@@ -144,6 +144,8 @@ class AcquisitionWorker:
                     or offer.get('media_type') not in tuple(DIRECT_FORMATS) + ('application/x-nzb', 'application/x-bittorrent')):
                 raise TransportError('unsupported_offer')
             usenet = offer.get('transport') in ('nzb', 'torrent')
+            if os.name == 'nt' and usenet:
+                raise TransportError('unsupported_offer')
             media_type = None if usenet else offer['media_type']
             if not usenet and not direct_format_allowed(media_type, config):
                 raise TransportError('unsupported_offer')

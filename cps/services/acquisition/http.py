@@ -379,7 +379,12 @@ def run_transfer(url: str, policy: HTTPPolicy, *, destination: Path | None = Non
                 checkpoint()
                 if destination:
                     # link, unlike replace/rename, cannot overwrite an existing file.
-                    os.link(staged, destination)
+                    try:
+                        os.link(staged, destination)
+                    except PermissionError:
+                        if os.name != 'nt':
+                            raise
+                        os.rename(staged, destination)
                     return DownloadedFile(destination, result['bytes'], result['sha256'], result['content_type'])
                 return FetchedDocument(base64.b64decode(result['body'], validate=True), result['url'], result['content_type'], result.get('status', 200), result.get('headers', {}))
             finally:
