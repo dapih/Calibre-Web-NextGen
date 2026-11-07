@@ -10,6 +10,10 @@ if ($LASTEXITCODE -ne 0) { throw 'Could not install the application dependencies
 
 # Build the web interface with an existing Node installation or an app-local copy.
 $savedPath = $env:PATH
+$nodeDir = Join-Path $runtimeRoot 'node'
+$nodeModules = Join-Path $root 'frontend\node_modules'
+$hadNode = Test-Path -LiteralPath $nodeDir
+$hadNodeModules = Test-Path -LiteralPath $nodeModules
 Push-Location (Join-Path $root 'frontend')
 try {
     $npm = Get-Command npm.cmd -ErrorAction SilentlyContinue
@@ -19,7 +23,6 @@ try {
         $nodePath = $node.Source
     } else {
         & (Join-Path $PSScriptRoot 'windows-setup-node.ps1') -RuntimeRoot $runtimeRoot
-        $nodeDir = Join-Path $runtimeRoot 'node'
         $env:PATH = $nodeDir + ';' + $savedPath
         $npmPath = Join-Path $nodeDir 'npm.cmd'
         $nodePath = Join-Path $nodeDir 'node.exe'
@@ -50,5 +53,12 @@ try {
 } finally {
     $env:PATH = $savedPath
     Pop-Location
+    # Keep developer-owned tools, but remove build dependencies created by setup.
+    if (-not $hadNodeModules -and (Test-Path -LiteralPath $nodeModules)) {
+        Remove-Item -LiteralPath $nodeModules -Recurse -Force
+    }
+    if (-not $hadNode -and (Test-Path -LiteralPath $nodeDir)) {
+        Remove-Item -LiteralPath $nodeDir -Recurse -Force
+    }
 }
 Write-Host 'Installed. Start the web application with scripts\windows-start.ps1.'

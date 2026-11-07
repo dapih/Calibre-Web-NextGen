@@ -9,7 +9,7 @@ On first run the application uses its existing `admin` / `admin123` login. Chang
 
 Configuration is stored in `%LOCALAPPDATA%\Calibre-Web-NextGen`. The start script displays the ingest folder. The Windows worker imports stable files after a library has been configured. If an import is interrupted or fails, it stops and leaves `unfinished-ingest.json` in the configuration directory for review; the original and working copy are retained. Check `background-ingest.log` and the library before deciding whether to retry; after resolving the interrupted import, remove the marker to resume. After a forced stop, make sure the import process has ended before restarting.
 
-This installation is still in development: direct OPDS acquisition has not yet been verified through a complete Calibre import. Newznab and external download-client integrations are unavailable on Windows.
+This installation is still in development and is not yet portable: its virtual environment records its original path, while configuration and the default ingest folder remain in the Windows user profile. Do not move the application folder and assume it will work without setup or that its data will move with it.
 
 To update, update the source checkout and rerun `install-windows.cmd`. To remove the application, delete its `.venv`, `.cwng-runtime` and source checkout. Configuration and the default ingest folder are kept separately. Check where your Calibre library and other data are stored first: if you put them inside the source checkout, move or back them up before deleting it.
 
