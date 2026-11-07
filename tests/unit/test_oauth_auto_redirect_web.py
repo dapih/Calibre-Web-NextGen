@@ -16,6 +16,11 @@ import cps.web
 pytestmark = pytest.mark.unit
 
 
+@pytest.fixture(autouse=True)
+def configured_library(monkeypatch):
+    monkeypatch.setattr(cps.web.config, "db_configured", True, raising=False)
+
+
 class _Anonymous:
     is_authenticated = False
 

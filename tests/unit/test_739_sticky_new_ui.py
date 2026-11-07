@@ -138,6 +138,7 @@ def _login_app(tmp_path):
     import cps.web as web_mod
 
     monkey = _seed_bundle(tmp_path)
+    monkey.setattr(web_mod.config, "db_configured", True, raising=False)
     app = flask.Flask(__name__)
     app.config["SECRET_KEY"] = "test"
     _mirror_prod_session_config(app)
@@ -241,11 +242,12 @@ def _index_app(tmp_path):
 
 
 def _get_login(client, web_mod, *args, login_type=0,
-               reverse_proxy_login=False, **kwargs):
+               reverse_proxy_login=False, db_configured=True, **kwargs):
     anonymous = MagicMock()
     anonymous.is_authenticated = False
     with patch.object(web_mod, "current_user", anonymous), \
          patch.object(web_mod, "render_login", return_value="CLASSIC LOGIN"), \
+         patch.object(web_mod.config, "db_configured", db_configured, create=True), \
          patch.object(web_mod.config, "config_login_type", login_type, create=True), \
          patch.object(web_mod.config, "config_allow_reverse_proxy_header_login",
                       reverse_proxy_login, create=True), \
@@ -673,6 +675,23 @@ def test_classic_index_redirect_rejects_hostile_proxy_prefix(tmp_path):
 
 
 # ---- anonymous login surface ------------------------------------------------
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("path", ["/login", "/login?next=%2Fadmin%2Fdbconfig"])
+def test_unconfigured_browser_reaches_classic_login_for_library_setup(tmp_path, path):
+    """The SPA is gated by DB setup, whose login must not redirect back to it."""
+    app, web_mod, monkey = _login_app(tmp_path)
+    try:
+        response = _get_login(
+            app.test_client(), web_mod, path, headers=_HTML_ACCEPT,
+            db_configured=False,
+        )
+        assert response.status_code == 200
+        assert response.get_data(as_text=True) == "CLASSIC LOGIN"
+    finally:
+        monkey.undo()
+
 
 @pytest.mark.unit
 def test_preferred_spa_redirects_anonymous_login_to_new_ui(tmp_path):

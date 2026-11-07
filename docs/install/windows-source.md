@@ -8,6 +8,8 @@ Run the existing application on Windows x64 without Docker, WSL or a global Pyth
 
 The existing first-run login is `admin` / `admin123`. Change that password before allowing network access. The launcher listens on the local computer by default. `start-windows.cmd -ListenAddress 0.0.0.0` allows network access when intended.
 
+Until a library is configured, browser login uses the classic login and database configuration pages. After configuration, the new web interface is the default.
+
 ## Where files live
 
 | Folder | Contents |

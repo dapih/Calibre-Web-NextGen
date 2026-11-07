@@ -3451,9 +3451,10 @@ def login():
         spa.clear_prefer_spa_cookie(response)
         return response
 
-    # Every configured login mode has an SPA authentication path. Only the
-    # transient Classic escape hatch keeps this browser session on Classic login.
-    if spa.preferred_spa_html_request():
+    # Before library setup, /app is redirected to the protected DB configuration
+    # page. Keep its login on Classic so it cannot bounce back through /app.
+    # Configured installations retain the default SPA authentication surface.
+    if config.db_configured and spa.preferred_spa_html_request():
         # The destination is fixed and app-owned. spa_shell_url() preserves a
         # valid reverse-proxy subpath while rejecting hostile forwarded prefixes;
         # ``next`` is carried only as encoded data for the SPA's strict
