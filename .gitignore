@@ -30,6 +30,9 @@ docs/*
 !docs/*.md
 # The README progress tracker's verdicts and ledger (scripts/progress_tracker.py).
 !docs/progress-tracker/
+# Repository agent instructions and architectural decisions.
+!docs/agents/
+!docs/adr/
 .venv-activate.sh
 test_venv
 cwa.code-workspace
@@ -321,3 +324,10 @@ wiki-generated/
 /local-dev/koreader-emulator/*
 !/local-dev/koreader-emulator/Dockerfile
 !/local-dev/koreader-emulator/entrypoint.sh
+
+# Disposable native Windows proof runtime, wheel build and logs.
+/.m0/
+
+# Application-local Windows runtime and tools.
+/.cwng-runtime/
+/.cwng-data/

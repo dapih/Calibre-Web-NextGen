@@ -112,7 +112,11 @@ def load_or_create_key(path, *, explicit_base64=None, allow_create=True):
         if allow_create:
             path.parent.mkdir(parents=True, exist_ok=True)
             fd, temporary = tempfile.mkstemp(prefix=".acquisition-key-", dir=path.parent)
-            os.fchmod(fd, 0o600)
+            if os.name == "nt":
+                from windows_native_profile import restrict_private_file
+                restrict_private_file(temporary)
+            else:
+                os.fchmod(fd, 0o600)
             key = AESGCM.generate_key(bit_length=256)
             encoded = base64.urlsafe_b64encode(key) + b"\n"
             with os.fdopen(fd, "wb") as stream:
@@ -121,19 +125,33 @@ def load_or_create_key(path, *, explicit_base64=None, allow_create=True):
                 stream.flush()
                 os.fsync(stream.fileno())
             try:
-                os.link(temporary, path)
+                try:
+                    os.link(temporary, path)
+                except PermissionError:
+                    if os.name != "nt":
+                        raise
+                    # Windows rename does not replace an existing file.
+                    os.rename(temporary, path)
             except FileExistsError:
                 pass
-            directory_fd = os.open(path.parent, os.O_RDONLY)
-            try:
-                os.fsync(directory_fd)
-            finally:
-                os.close(directory_fd)
-        flags = os.O_RDONLY | os.O_NONBLOCK | getattr(os, "O_NOFOLLOW", 0)
+            if os.name == "nt":
+                from windows_m0_inbox import _flush_directory
+                _flush_directory(path.parent)
+            else:
+                directory_fd = os.open(path.parent, os.O_RDONLY)
+                try:
+                    os.fsync(directory_fd)
+                finally:
+                    os.close(directory_fd)
+        if os.name == "nt":
+            from windows_native_profile import restrict_private_file
+            restrict_private_file(path)
+        flags = os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_NOFOLLOW", 0)
         fd = os.open(path, flags)
         if not stat.S_ISREG(os.fstat(fd).st_mode):
             raise SecretError("Acquisition key must be a regular file")
-        os.fchmod(fd, 0o600)
+        if os.name != "nt":
+            os.fchmod(fd, 0o600)
         encoded = os.read(fd, 257)
         if len(encoded) > 256 or os.read(fd, 1):
             raise SecretError("Acquisition key file exceeds size limit")

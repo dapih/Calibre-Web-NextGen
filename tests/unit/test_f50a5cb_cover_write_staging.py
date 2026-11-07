@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 import errno
 import inspect
 import io
+from pathlib import Path
 import time
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -517,7 +518,7 @@ def test_spa_success_commits_then_publishes_then_invalidates_thumbnail(
     real_replace = helper.os.replace
 
     def observed_replace(source, target):
-        assert str(target) == str(cover)
+        assert Path(target) == cover
         assert cover.read_bytes() == OLD_COVER
         events.append("publish")
         return real_replace(source, target)
@@ -619,7 +620,7 @@ def _invoke_surface(
     real_replace = helper.os.replace
 
     def observed_replace(source, target):
-        assert str(target) == str(cover)
+        assert Path(target) == cover
         assert cover.read_bytes() == OLD_COVER
         events.append("publish")
         if publish_failure:

@@ -120,7 +120,8 @@ def _reset_request_io_slots_after_fork():
     _REQUEST_IO_SLOTS = threading.BoundedSemaphore(MAX_PENDING_IO_OPERATIONS)
 
 
-os.register_at_fork(after_in_child=_reset_request_io_slots_after_fork)
+if hasattr(os, "register_at_fork"):
+    os.register_at_fork(after_in_child=_reset_request_io_slots_after_fork)
 
 
 def _spool_root() -> Path:
@@ -387,6 +388,27 @@ def _compress(record) -> bytes:
 
 
 def _fsync_directory(path):
+    if os.name == "nt":
+        import ctypes
+        from ctypes import wintypes
+
+        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel.CreateFileW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD,
+                                       ctypes.c_void_p, wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE]
+        kernel.CreateFileW.restype = wintypes.HANDLE
+        kernel.FlushFileBuffers.argtypes = [wintypes.HANDLE]
+        kernel.FlushFileBuffers.restype = wintypes.BOOL
+        kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+        kernel.CloseHandle.restype = wintypes.BOOL
+        handle = kernel.CreateFileW(str(path), 0x40000000, 7, None, 3, 0x02000000, None)
+        if handle == ctypes.c_void_p(-1).value:
+            raise ctypes.WinError(ctypes.get_last_error())
+        try:
+            if not kernel.FlushFileBuffers(handle):
+                raise ctypes.WinError(ctypes.get_last_error())
+        finally:
+            kernel.CloseHandle(handle)
+        return
     directory_fd = os.open(path, os.O_RDONLY)
     try:
         os.fsync(directory_fd)
@@ -504,14 +526,15 @@ def _record_inventory(root):
 
 
 def _select_victims(
-    inventory, *, incoming_bytes, max_age_seconds, replacing_path=None,
+    inventory, *, incoming_bytes, max_age_seconds, replacing_path=None, protected_paths=(),
 ):
     replacing_path = Path(replacing_path) if replacing_path is not None else None
+    protected = {Path(path) for path in protected_paths}
     active = [item for item in inventory if item["path"] != replacing_path]
     victims = []
     now = time.time()
     for item in active:
-        if now - item["mtime"] > max_age_seconds:
+        if item["path"] not in protected and now - item["mtime"] > max_age_seconds:
             victims.append(item)
 
     survivors = [item for item in active if item not in victims]
@@ -523,7 +546,7 @@ def _select_victims(
     for item in survivors:
         if count <= MAX_FILES and total <= MAX_TOTAL_BYTES:
             break
-        if item["status"] != "dispatch_completed":
+        if item["path"] in protected or item["status"] != "dispatch_completed":
             continue
         victims.append(item)
         count -= 1
@@ -701,8 +724,17 @@ def _write_or_reuse_record(
                 inventory, incoming,
             )
             if matches:
+                incoming_compressed = compressed
+                if os.name == "nt":
+                    # Prefer an already replayable record. A completed older
+                    # duplicate may still be held open by an inspection reader.
+                    matches.reverse()
+                    matches.sort(key=lambda pair: pair[1].get("dispatch_status") in _UNRESOLVED_OUTCOMES,
+                                 reverse=True)
                 existing_path, existing = matches[0]
-                duplicate_paths = [path for path, _record in matches[1:]]
+                protected_completed = [path for path, record in matches[1:]
+                                       if os.name == "nt" and record.get("dispatch_status") == "dispatch_completed"]
+                duplicate_paths = [path for path, _record in matches[1:] if path not in protected_completed]
                 now = incoming["received_at"]
                 refreshed = dict(existing)
                 refreshed.update({
@@ -713,7 +745,8 @@ def _write_or_reuse_record(
                     "dispatch_attempt_id": incoming["dispatch_attempt_id"],
                     "attempt_count": sum(
                         int(record.get("attempt_count", 1))
-                        for _path, record in matches
+                        for matched_path, record in matches
+                        if matched_path not in protected_completed
                     ) + 1,
                     "replay_identity_sha256": incoming["replay_identity_sha256"],
                 })
@@ -727,6 +760,7 @@ def _write_or_reuse_record(
                     incoming_bytes=len(compressed),
                     max_age_seconds=max_age_seconds,
                     replacing_path=existing_path,
+                    protected_paths=protected_completed,
                 )
                 victims = duplicate_paths + victims
                 path = _path_with_identity_and_status(
@@ -737,18 +771,40 @@ def _write_or_reuse_record(
                 _schedule_retention(
                     root, time.time() + max_age_seconds, max_age_seconds,
                 )
-                _install_record_locked(
-                    path,
-                    compressed,
-                    victims=victims,
-                    replacing_path=existing_path,
-                )
-                result = (
-                    refreshed["spool_id"],
-                    path,
-                    incoming["dispatch_attempt_id"],
-                    True,
-                )
+                try:
+                    _install_record_locked(
+                        path,
+                        compressed,
+                        victims=victims,
+                        replacing_path=existing_path,
+                    )
+                except PermissionError as error:
+                    # On Windows a replay/inspection reader can hold a
+                    # completed record without delete sharing. Preserve that
+                    # record and stage this new attempt separately; otherwise a
+                    # subsequent failed dispatch has no replay candidate.
+                    if (os.name != "nt" or getattr(error, "winerror", None) != 32 or
+                            not error.filename or
+                            os.path.normcase(os.path.abspath(error.filename)) != os.path.normcase(str(existing_path)) or
+                            existing.get("dispatch_status") != "dispatch_completed"):
+                        raise
+                    victims = _select_victims(
+                        inventory, incoming_bytes=len(incoming_compressed),
+                        max_age_seconds=max_age_seconds, protected_paths=[item[0] for item in matches],
+                    )
+                    path = root / (
+                        f"patch-{time.time_ns():020d}-{incoming['spool_id']}-"
+                        f"{incoming['replay_identity_sha256']}-staged.json.gz"
+                    )
+                    _install_record_locked(path, incoming_compressed, victims=victims)
+                    result = (incoming["spool_id"], path, incoming["dispatch_attempt_id"], False)
+                else:
+                    result = (
+                        refreshed["spool_id"],
+                        path,
+                        incoming["dispatch_attempt_id"],
+                        True,
+                    )
             else:
                 victims = _select_victims(
                     inventory,
@@ -830,7 +886,10 @@ def _replace_record_locked(path, compressed):
         prefix=".patch-", suffix=".tmp", dir=path.parent,
     )
     try:
-        os.fchmod(temp_fd, 0o600)
+        if hasattr(os, "fchmod"):
+            os.fchmod(temp_fd, 0o600)
+        else:
+            os.chmod(temp_name, 0o600)
         with os.fdopen(temp_fd, "wb") as stream:
             temp_fd = None
             stream.write(compressed)

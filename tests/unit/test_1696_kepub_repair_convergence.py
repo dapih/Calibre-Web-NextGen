@@ -393,13 +393,14 @@ def test_unsupported_skip_invalidates_for_file_identity_and_repair_version(
     assert len(probes) == 1
 
     cached_stat = package.stat()
+    cached_change = repair_task._file_identity(package)[2]
     with zipfile.ZipFile(package, "a") as archive:
         archive.comment = b"b"
     os.utime(package, ns=(cached_stat.st_atime_ns, cached_stat.st_mtime_ns))
     changed_stat = package.stat()
     assert changed_stat.st_size == cached_stat.st_size
     assert changed_stat.st_mtime_ns == cached_stat.st_mtime_ns
-    assert changed_stat.st_ctime_ns != cached_stat.st_ctime_ns
+    assert repair_task._file_identity(package)[2] != cached_change
 
     assert process(repair_task.REPAIR_VERSION) == "unsupported"
     assert len(probes) == 2
@@ -411,7 +412,7 @@ def test_unsupported_skip_invalidates_for_file_identity_and_repair_version(
     assert rows[0].repair_version == repair_task.REPAIR_VERSION + 1
     assert rows[0].source_size == package.stat().st_size
     assert rows[0].source_mtime_ns == package.stat().st_mtime_ns
-    assert rows[0].source_ctime_ns == package.stat().st_ctime_ns
+    assert rows[0].source_ctime_ns == repair_task._file_identity(package)[2]
 
 
 @pytest.mark.unit

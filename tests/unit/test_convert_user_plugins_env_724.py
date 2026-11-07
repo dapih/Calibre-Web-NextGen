@@ -14,6 +14,7 @@ feature is enabled, and is left untouched when it is disabled.
 """
 import io
 import os
+from pathlib import Path
 import types
 
 import pytest
@@ -89,7 +90,7 @@ def test_convert_env_carries_user_plugin_config_dir_when_enabled(monkeypatch):
     assert check == 0
     env = captured["env"]
     assert env is not None, "ebook-convert must run with an explicit env (#724)"
-    assert env.get("CALIBRE_CONFIG_DIRECTORY") == "/config/.config/calibre", \
+    assert env.get("CALIBRE_CONFIG_DIRECTORY") == str(Path("/config") / ".config" / "calibre"), \
         "converter must see the user's Calibre plugins dir or KFX input fails (#724)"
     assert env.get("HOME") == "/config"
 
@@ -99,4 +100,20 @@ def test_convert_env_untouched_when_feature_disabled(monkeypatch):
     env = captured["env"]
     # apply_to_env is a no-op when disabled: it must NOT force the /config dir.
     assert env is not None
-    assert env.get("CALIBRE_CONFIG_DIRECTORY") != "/config/.config/calibre"
+    assert env.get("CALIBRE_CONFIG_DIRECTORY") != str(Path("/config") / ".config" / "calibre")
+
+
+@pytest.mark.skipif(os.name != "nt", reason="native Windows path policy")
+def test_native_plugins_use_private_config_directory(monkeypatch, tmp_path):
+    from cps.services import calibre_user_plugins
+
+    monkeypatch.setenv("CWNG_NATIVE_MODE", "1")
+    monkeypatch.setenv("CWA_CALIBRE_USER_PLUGINS", "1")
+    monkeypatch.setenv("CALIBRE_DBPATH", str(tmp_path))
+    env = calibre_user_plugins.apply_to_env({})
+    assert env["HOME"] == str(tmp_path)
+    assert Path(env["CALIBRE_CONFIG_DIRECTORY"]) == tmp_path / ".config" / "calibre"
+    assert calibre_user_plugins.plugins_dir() == tmp_path / ".config" / "calibre" / "plugins"
+    monkeypatch.setenv("CALIBRE_DBPATH", "relative-config")
+    with pytest.raises(ValueError):
+        calibre_user_plugins.apply_to_env({})

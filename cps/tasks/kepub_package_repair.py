@@ -21,6 +21,7 @@ from ..services.kepub_package_normalizer import (
     normalize_kepub_package,
 )
 from ..services.user_notices import create_notice_event
+from ..services.calibre_db_lock import metadata_db_write_lock
 from ..services.worker import (
     CalibreTask, STAT_CANCELLED, STAT_ENDED, STAT_FAIL, STAT_FINISH_SUCCESS,
     WorkerThread,
@@ -71,8 +72,36 @@ def _file_identity(path):
     one re-probe until a future repair-version bump; that failure mode is chosen
     over hashing a package we may not safely read.
     """
-    file_stat = os.stat(path)
-    return file_stat.st_size, file_stat.st_mtime_ns, file_stat.st_ctime_ns
+    if os.name != "nt":
+        file_stat = os.stat(path)
+        return file_stat.st_size, file_stat.st_mtime_ns, file_stat.st_ctime_ns
+
+    # Windows stat().st_ctime is creation time, not the metadata change time
+    # used by the POSIX cache. Query FILE_BASIC_INFO on the same open file.
+    import ctypes
+    import msvcrt
+    from ctypes import wintypes
+
+    class FileBasicInfo(ctypes.Structure):
+        _fields_ = [("creation", ctypes.c_longlong), ("access", ctypes.c_longlong),
+                    ("write", ctypes.c_longlong), ("change", ctypes.c_longlong),
+                    ("attributes", wintypes.DWORD)]
+
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel.GetFileInformationByHandleEx.argtypes = [wintypes.HANDLE, ctypes.c_int,
+                                                     ctypes.c_void_p, wintypes.DWORD]
+    kernel.GetFileInformationByHandleEx.restype = wintypes.BOOL
+    fd = os.open(path, os.O_RDONLY | getattr(os, "O_BINARY", 0))
+    try:
+        file_stat = os.fstat(fd)
+        info = FileBasicInfo()
+        if not kernel.GetFileInformationByHandleEx(msvcrt.get_osfhandle(fd), 0,
+                                                    ctypes.byref(info), ctypes.sizeof(info)):
+            raise ctypes.WinError(ctypes.get_last_error())
+        change_ns = (info.change - 116444736000000000) * 100
+        return file_stat.st_size, file_stat.st_mtime_ns, change_ns
+    finally:
+        os.close(fd)
 
 
 def _probe_status(result):
@@ -289,6 +318,7 @@ class TaskKepubPackageRepair(CalibreTask):
         if value in _TERMINAL_STATS:
             _clear_pending(self)
 
+    @metadata_db_write_lock()
     def run(self, worker_thread):
         try:
             if config.config_use_google_drive:

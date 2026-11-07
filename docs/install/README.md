@@ -6,6 +6,8 @@ Calibre-Web-NextGen ships as a single Docker image:
 ghcr.io/new-usemame/calibre-web-nextgen:latest
 ```
 
+A [portable Windows source installation](windows-source.md) downloads Python and Calibre into the application folder and keeps configuration and default ingest there too.
+
 It's a drop-in for the standard Calibre-Web-Automated (CWA) image. **Switching keeps
 everything**: your books, users, settings, shelves and the Read checkmarks you've set all
 live in the folders you mount into the container (`/config` and `/calibre-library`), not

@@ -37,10 +37,14 @@ Deliberately dependency-free, like :mod:`app_paths`: these run before the Flask
 stack is usable.
 """
 
-import grp
 import os
-import pwd
 import subprocess
+
+try:
+    import grp
+    import pwd
+except ImportError:  # Windows has no Unix account database or chown.
+    grp = pwd = None
 
 __all__ = [
     "DEFAULT_SERVICE_USER",
@@ -61,6 +65,8 @@ def service_ids():
     ``None`` means "this is not the container" — a source install, a CI runner,
     a dev checkout. Callers skip the chown; they do not report a failure.
     """
+    if pwd is None or grp is None:
+        return None
     user = os.environ.get("CWA_SERVICE_USER", DEFAULT_SERVICE_USER).strip()
     group = os.environ.get("CWA_SERVICE_GROUP", DEFAULT_SERVICE_GROUP).strip()
     if not user or not group:

@@ -1807,6 +1807,7 @@ _("This database carries permissions from the old experimental Store. They need 
 _("This device has not reported its inventory yet.")
 _("This device will no longer sync.")
 _("This download client API version is not supported. Check the documented supported versions.")
+_("This download client is not available on Windows; use an OPDS source.")
 _("This e-reader is unavailable or belongs to another account.")
 _("This feature is currently disabled at server level.")
 _("This format opens in the full-screen reader.")

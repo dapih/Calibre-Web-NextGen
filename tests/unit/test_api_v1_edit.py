@@ -435,7 +435,7 @@ def test_classic_edit_explains_metadata_only_result_and_renders_single_format_co
 def test_classic_delete_modal_distinguishes_format_from_whole_book_consequences():
     repo = Path(__file__).parents[2]
     modal = (repo / "cps" / "templates" / "modal_dialogs.html").read_text()
-    script = (repo / "cps" / "static" / "js" / "main.js").read_text()
+    script = (repo / "cps" / "static" / "js" / "main.js").read_text(encoding="utf-8")
     assert 'id="book_format_details"' in modal
     assert 'id="book_complete_details"' in modal
     assert "The book record, metadata, shelves, and reading state stay available." in modal

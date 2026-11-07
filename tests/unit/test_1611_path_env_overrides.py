@@ -58,6 +58,23 @@ def _answers(module):
     return {key: getattr(module, key)() for key, _env, _default in PATH_CASES}
 
 
+@pytest.mark.skipif(os.name != "nt", reason="Windows drive-path handling")
+def test_windows_paths_are_preserved_and_drive_root_is_rejected(resolvers, monkeypatch, tmp_path):
+    app_paths, constants = resolvers
+    configured = str(tmp_path / "library")
+    for module in (app_paths, constants):
+        assert module._validated_runtime_dir(configured, "test") == os.path.normpath(configured)
+        with pytest.raises(module.RuntimePathError):
+            module._validated_runtime_dir(tmp_path.anchor, "test")
+        with pytest.raises(module.RuntimePathError):
+            module._validated_runtime_dir(str(tmp_path / ".." / "library"), "test")
+    for key, env_name, _default in PATH_CASES:
+        value = str(tmp_path / key)
+        monkeypatch.setenv(env_name, value)
+        assert getattr(app_paths, key)() == value
+        assert getattr(constants, key)() == value
+
+
 @pytest.mark.parametrize("key,env_name,default", PATH_CASES)
 def test_each_env_var_overrides_its_file_value_on_both_sides(
     resolvers, monkeypatch, tmp_path, key, env_name, default

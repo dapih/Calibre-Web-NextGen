@@ -1725,6 +1725,7 @@ def auto_resolve_duplicates(strategy='newest', dry_run=False, user_id=None, trig
         # resolution lock, so the finally releases it exactly once. Defined first
         # so the finally can never reference it before assignment.
         lock_held = False
+        writer_lock = None
         import time
         start_time = time.time()
 
@@ -1831,6 +1832,12 @@ def auto_resolve_duplicates(strategy='newest', dry_run=False, user_id=None, trig
                     'message': 'A duplicate resolution is already in progress; this run was skipped to avoid a conflicting delete.',
                     'in_progress': True,
                 }
+            # Protect the merge, database changes and files-last cleanup as one
+            # writer, including the direct delete_whole_book path below.
+            from .services.calibre_db_lock import metadata_db_write_lock
+            pending_lock = metadata_db_write_lock()
+            pending_lock.__enter__()
+            writer_lock = pending_lock
 
         for group in duplicate_groups:
             try:
@@ -2101,8 +2108,12 @@ def auto_resolve_duplicates(strategy='newest', dry_run=False, user_id=None, trig
         # invocation acquired it (not dry_run). Released in finally so an
         # exception anywhere in the loop can't strand the lock and deadlock every
         # future resolution.
-        if lock_held:
-            _AUTO_RESOLVE_LOCK.release()
+        try:
+            if writer_lock is not None:
+                writer_lock.__exit__(None, None, None)
+        finally:
+            if lock_held:
+                _AUTO_RESOLVE_LOCK.release()
 
 
 def merge_duplicate_group(book_to_keep, books_to_merge):

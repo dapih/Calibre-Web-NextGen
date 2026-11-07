@@ -10,6 +10,8 @@ import re
 import glob
 import tempfile
 import zipfile
+from contextlib import nullcontext
+from pathlib import Path
 from shutil import copyfile, copyfileobj
 from markupsafe import escape
 from time import time
@@ -80,6 +82,20 @@ class TaskConvert(CalibreTask):
         self.results = dict()
 
     def run(self, worker_thread):
+        # Drive-backed conversions materialize and later remove files in the
+        # library as part of the same operation. Protect those steps as well
+        # as conversion in native mode; the local-only path already locks its
+        # conversion boundary below.
+        if os.name == 'nt' and os.environ.get('CWNG_NATIVE_MODE') == '1' and config.config_use_google_drive:
+            with content_server.ownership.operation(constants.CONFIG_DIR):
+                self._conversion_lock_held = True
+                try:
+                    return self._run_locked_or_local(worker_thread)
+                finally:
+                    self._conversion_lock_held = False
+        return self._run_locked_or_local(worker_thread)
+
+    def _run_locked_or_local(self, worker_thread):
         self.worker_thread = worker_thread
         if config.config_use_google_drive:
             worker_db = db.CalibreDB(expire_on_commit=False, init=True)
@@ -145,6 +161,18 @@ class TaskConvert(CalibreTask):
                     return self._handleError(str(ex))
 
     def _convert_ebook_format(self):
+        # Hold the shared writer gate through conversion and its metadata
+        # commit, including calls made directly by the KEPUB backfill task.
+        if getattr(self, '_conversion_lock_held', False):
+            return self._convert_ebook_format_locked()
+        with content_server.ownership.operation(constants.CONFIG_DIR):
+            self._conversion_lock_held = True
+            try:
+                return self._convert_ebook_format_locked()
+            finally:
+                self._conversion_lock_held = False
+
+    def _convert_ebook_format_locked(self):
         error_message = None
         local_db = db.CalibreDB(expire_on_commit=False, init=True)
         file_path = self.file_path
@@ -200,16 +228,16 @@ class TaskConvert(CalibreTask):
                      book_id,
                      format_new_ext)
 
-        if config.config_kepubifypath and format_old_ext == '.epub' and format_new_ext == '.kepub':
-            check, error_message = self._convert_kepubify(file_path,
-                                                          format_old_ext,
-                                                          format_new_ext)
-        else:
-            # check if calibre converter-executable is existing
+        if not (config.config_kepubifypath and format_old_ext == '.epub' and format_new_ext == '.kepub'):
             if not os.path.exists(config.config_converterpath):
                 self._handleError(N_("Calibre ebook-convert %(tool)s not found", tool=config.config_converterpath))
                 return
-            has_cover = local_db.get_book(book_id).has_cover
+        has_cover = local_db.get_book(book_id).has_cover
+        if os.name == 'nt' and os.environ.get('CWNG_NATIVE_MODE') == '1':
+            check, error_message = self._convert_native_staged(file_path, format_old_ext, format_new_ext, has_cover)
+        elif config.config_kepubifypath and format_old_ext == '.epub' and format_new_ext == '.kepub':
+            check, error_message = self._convert_kepubify(file_path, format_old_ext, format_new_ext)
+        else:
             check, error_message = self._convert_calibre(file_path, format_old_ext, format_new_ext, has_cover)
 
         if check == 0:
@@ -259,6 +287,61 @@ class TaskConvert(CalibreTask):
         self._handleError(error_message)
         return
 
+    def _convert_native_staged(self, file_path, old_ext, new_ext, has_cover):
+        """Keep child output outside the library until this lock owner publishes it.
+
+        Windows releases the parent's byte-range lock when it dies even if a
+        converter it launched is still running. A surviving converter may only
+        mutate its private staging directory; it never receives a library
+        output path. Publication occurs in the locked parent after child exit.
+        """
+        try:
+            state = Path(os.environ['CWNG_NATIVE_STATE_DIR']).resolve(strict=True)
+            library = Path(config.get_book_path()).resolve(strict=True)
+            if not state.is_dir() or state.is_relative_to(library):
+                raise ValueError('private conversion state overlaps the library')
+            # Metadata export also uses this temporary root; it must not leave a
+            # surviving calibredb child writing inside the library either.
+            if (Path(tempfile.gettempdir()).resolve(strict=True).is_relative_to(library) or
+                    Path(get_temp_dir()).resolve(strict=True).is_relative_to(library)):
+                raise ValueError('metadata export directory overlaps the library')
+            staging_root = state / 'conversion-staging'
+            staging_root.mkdir(exist_ok=True)
+            resolved_stage = staging_root.resolve(strict=True)
+            if not resolved_stage.is_relative_to(state) or resolved_stage.is_relative_to(library):
+                raise ValueError('conversion staging escapes private state')
+            with tempfile.TemporaryDirectory(prefix='book-', dir=staging_root) as directory:
+                staged = os.path.join(directory, 'book')
+                copyfile(file_path + old_ext, staged + old_ext)
+                if has_cover and config.config_embed_metadata and not (
+                        config.config_kepubifypath and old_ext == '.epub' and new_ext == '.kepub'):
+                    copyfile(os.path.join(os.path.dirname(file_path), 'cover.jpg'),
+                             os.path.join(directory, 'cover.jpg'))
+                if config.config_kepubifypath and old_ext == '.epub' and new_ext == '.kepub':
+                    result = self._convert_kepubify(staged, old_ext, new_ext,
+                                                    previous_destination=file_path + new_ext)
+                else:
+                    result = self._convert_calibre(staged, old_ext, new_ext, has_cover)
+                if result[0] != 0:
+                    return result
+                output = staged + new_ext
+                if not os.path.isfile(output) or not _valid_archive(output, new_ext[1:]):
+                    return 1, N_('Converted file is missing or invalid')
+                destination = file_path + new_ext
+                fd, temp_destination = tempfile.mkstemp(dir=os.path.dirname(destination),
+                                                        prefix='.' + os.path.basename(destination) + '.', suffix='.tmp')
+                os.close(fd)
+                try:
+                    copyfile(output, temp_destination)
+                    os.replace(temp_destination, destination)
+                finally:
+                    if os.path.exists(temp_destination):
+                        os.unlink(temp_destination)
+                return result
+        except (KeyError, OSError, ValueError) as error:
+            log.error('Native conversion staging failed: %s', error)
+            return 1, N_('Native conversion staging failed: %(error)s', error=str(error))
+
     def _book_has_annotations(self):
         """True when any user holds a highlight or note against this book.
 
@@ -294,7 +377,7 @@ class TaskConvert(CalibreTask):
                 except Exception:
                     pass
 
-    def _convert_kepubify(self, file_path, format_old_ext, format_new_ext):
+    def _convert_kepubify(self, file_path, format_old_ext, format_new_ext, *, previous_destination=None):
         if config.config_embed_metadata and config.config_binariesdir:
             tmp_dir, temp_file_name = helper.do_calibre_export(self.book_id, format_old_ext[1:])
             if tmp_dir and temp_file_name:
@@ -372,9 +455,10 @@ class TaskConvert(CalibreTask):
                         package_was_split_by_us,
                     )
 
+                    previous = previous_destination or destination
                     may_split = not self._book_has_annotations() or (
-                        os.path.exists(destination)
-                        and package_was_split_by_us(destination))
+                        os.path.exists(previous)
+                        and package_was_split_by_us(previous))
                     normalize_kepub_package(
                         temp_destination, split_chapters=may_split)
                     if not _valid_archive(temp_destination, format_new_ext[1:]):
@@ -417,7 +501,9 @@ class TaskConvert(CalibreTask):
                 else:
                     library_path = config.config_calibre_dir
 
-                with content_server.ownership.operation(constants.CONFIG_DIR):
+                gate = (nullcontext() if getattr(self, '_conversion_lock_held', False)
+                        else content_server.ownership.operation(constants.CONFIG_DIR))
+                with gate:
                     target = content_server.library_target()
                     opf_command = ([calibredb_binarypath, 'show_metadata', '--as-opf', str(self.book_id)]
                                    + (target.args or ['--with-library', library_path]))

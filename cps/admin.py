@@ -46,6 +46,7 @@ from .gdriveutils import is_gdrive_ready, gdrive_support
 from .render_template import render_title_template, get_sidebar_config, get_custom_column_visibility_options
 from .custom_column_visibility import save_cc_visibility
 from .services import file_lock
+from .services.calibre_db_lock import metadata_db_write_lock
 from .services.worker import WorkerThread
 from .services.opds_filename import validate_template as validate_opds_filename_template
 from .services.mail_filename import validate_mail_filename_template
@@ -366,6 +367,7 @@ def hardcover_review_matches():
 @admi.route("/admin/hardcover/review-action", methods=["POST"])
 @user_login_required
 @admin_required
+@metadata_db_write_lock()
 def hardcover_review_action():
     """Process review action (accept/reject/skip) for a queued match"""
     try:
@@ -1207,7 +1209,8 @@ def update_view_configuration():
         # in the old order until each book is edited. Recompute the whole
         # library now, like Calibre desktop does on a regex change. (#522)
         try:
-            updated = calibre_db.reapply_title_sort()
+            with metadata_db_write_lock():
+                updated = calibre_db.reapply_title_sort()
             log.info("Title-sort regex changed; recomputed sort for %s books", updated)
         except Exception as ex:
             log.error("Title-sort recompute failed: %s", ex)
@@ -4048,6 +4051,9 @@ def _acquire_restore_service_locks():
 @admin_required
 def restore_calibre_db():
     """Restore Calibre metadata.db and clean app.db book-linked tables (last resort recovery)."""
+    if os.name == 'nt' and os.environ.get('CWNG_NATIVE_MODE') == '1':
+        flash(_("Calibre database restore is not available in native Windows mode yet."), category="error")
+        return redirect(url_for("admin.db_configuration"))
     lock_handles = []
     content_server_hold = None
     try:

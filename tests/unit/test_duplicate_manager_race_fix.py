@@ -128,7 +128,7 @@ class TestEditbooksBatchedInvalidation:
         the original PR #100 invariant (skip-flag honored) is preserved."""
         src = self._read_editbooks()
         match = re.search(
-            r"def delete_book_from_table\(.*?\):.*?(?=\n(?:def |@)\w)",
+            r"def _delete_book_from_table_locked\(.*?\):.*?(?=\n(?:def |@)\w)",
             src, re.DOTALL,
         )
         assert match is not None, "delete_book_from_table not found"

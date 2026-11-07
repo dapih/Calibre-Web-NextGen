@@ -132,13 +132,7 @@ def test_reload_metadata_writes_under_metadata_db_lock():
     same coordination as other writers to prevent torn writes during
     concurrent ingest / convert / edit operations."""
     src = _source()
-    match = re.search(
-        r"def reload_metadata_from_disk\(book_id\):.*?(?=\n\Z)",
-        src,
-        re.DOTALL,
-    )
-    body = match.group(0)
-    assert "metadata_db_write_lock()" in body, (
+    assert re.search(r"@metadata_db_write_lock\(\)\s*\ndef reload_metadata_from_disk\(book_id\):", src), (
         "reload_metadata_from_disk must guard its writes with "
         "metadata_db_write_lock() — concurrent ingest/edit can torn-write "
         "the metadata.db otherwise. Same pattern as other writers."

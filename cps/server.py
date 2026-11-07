@@ -12,6 +12,10 @@ import signal
 import socket
 
 try:
+    # Gevent's Windows libuv server terminated on repeated requests; use the
+    # existing Tornado backend on Windows.
+    if os.name == 'nt':
+        raise ImportError('Windows uses Tornado')
     from gevent.pywsgi import WSGIServer
     from .gevent_wsgi import MyWSGIHandler
     from gevent.pool import Pool

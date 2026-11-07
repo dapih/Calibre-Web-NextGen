@@ -272,6 +272,7 @@ def edit_list_book(param):
 @editbook.route("/ajax/editselectedbooks", methods=['POST'])
 @login_required_if_no_ano
 @edit_required
+@metadata_db_write_lock()
 def edit_selected_books():
     d = request.get_json()
     selections = d.get('selections')
@@ -767,7 +768,7 @@ def edit_book_param(param, vals):
                 kobo_sync_status.remove_synced_book(book.id)
             return ""
         elif param == 'read_status':
-            ret = helper.edit_book_read_status(book.id, vals['value'] == "True")
+            ret = helper.edit_book_read_status(book.id, vals['value'] == "True", _metadata_lock_held=True)
             if ret:
                 return ret, 400
         elif param.startswith("custom_column_"):
@@ -928,6 +929,7 @@ def read_selected_books():
 @editbook.route("/ajax/mergebooks", methods=['POST'])
 @user_login_required
 @edit_required
+@metadata_db_write_lock()
 def merge_list_book():
     payload = request.get_json()
     vals = payload.get('Merge_books')
@@ -970,7 +972,7 @@ def merge_list_book():
                                     data_entry.uncompressed_size = element.uncompressed_size
                                     target_formats_changed = True
                                     break
-                    delete_book_from_table(from_book.id, "", True, skip_cache_invalidation=True)
+                    _delete_book_from_table_locked(from_book.id, "", True, skip_cache_invalidation=True)
             if target_formats_changed:
                 # Format availability and Size are rendered into Kobo
                 # entitlements, so every add/overwrite must advance the same
@@ -1038,6 +1040,7 @@ def _queue_duplicate_scan_after_change(book_ids=None):
 @editbook.route("/ajax/xchange", methods=['POST'])
 @user_login_required
 @edit_required
+@metadata_db_write_lock()
 def table_xchange_author_title():
     vals = request.get_json().get('xchange')
     edited_books_id = False
@@ -1079,6 +1082,12 @@ def table_xchange_author_title():
 
 
 def do_edit_book(book_id, upload_formats=None):
+    # Protect file renames, staging, commit and cover publication as one writer.
+    with metadata_db_write_lock():
+        return _do_edit_book_locked(book_id, upload_formats)
+
+
+def _do_edit_book_locked(book_id, upload_formats=None):
     request_start = time.monotonic()
     log.debug("[edit_book] start book_id=%s user=%s upload_formats=%s", book_id, getattr(current_user, "name", "unknown"), bool(upload_formats))
     modify_date = False
@@ -1220,15 +1229,10 @@ def do_edit_book(book_id, upload_formats=None):
         if modify_date:
             helper.mark_book_modified(book)
 
-        # Hold the process-shared metadata.db write lock for the
-        # duration of the commit. Coordinates with the ingest_processor
-        # subprocess so concurrent imports cannot poison the commit
-        # with apsw.BusyError on filesystems with unreliable POSIX
-        # locks (mergerfs, SMB, NFS). See fork issue #192.
+        # The caller holds the shared writer lock across the entire edit.
         try:
-            with metadata_db_write_lock():
-                calibre_db.session.merge(book)
-                calibre_db.session.commit()
+            calibre_db.session.merge(book)
+            calibre_db.session.commit()
             log.debug("[edit_book] db commit ok book_id=%s duration=%.3fs", book.id, time.monotonic() - request_start)
         except InvalidRequestError as e:
             # Recover from closed/invalid transaction by recreating the session and retrying once
@@ -1243,9 +1247,8 @@ def do_edit_book(book_id, upload_formats=None):
                 pass
             calibre_db.session = None
             calibre_db.ensure_session()
-            with metadata_db_write_lock():
-                calibre_db.session.merge(book)
-                calibre_db.session.commit()
+            calibre_db.session.merge(book)
+            calibre_db.session.commit()
             log.debug("[edit_book] db commit retry ok book_id=%s duration=%.3fs", book.id, time.monotonic() - request_start)
 
         if cover_stage is not None:
@@ -1255,9 +1258,8 @@ def do_edit_book(book_id, upload_formats=None):
                 cover_stage = None
                 book.has_cover, book.last_modified = previous_cover_metadata
                 try:
-                    with metadata_db_write_lock():
-                        calibre_db.session.merge(book)
-                        calibre_db.session.commit()
+                    calibre_db.session.merge(book)
+                    calibre_db.session.commit()
                 except Exception as compensation_error:
                     log.error_or_exception(
                         "Cover metadata compensation failed for book %s after "
@@ -1786,6 +1788,13 @@ def get_visible_book_for_delete(book_id):
 
 
 def delete_book_from_table(
+    book_id, book_format, json_response, location="", skip_cache_invalidation=False
+):
+    with metadata_db_write_lock():
+        return _delete_book_from_table_locked(book_id, book_format, json_response, location, skip_cache_invalidation)
+
+
+def _delete_book_from_table_locked(
     book_id, book_format, json_response, location="", skip_cache_invalidation=False
 ):
     warning = {}
@@ -2726,6 +2735,7 @@ def _refresh_format_sizes(book, book_dir):
 @editbook.route("/admin/book/<int:book_id>/reload_metadata", methods=["POST"])
 @login_required_if_no_ano
 @edit_required
+@metadata_db_write_lock()
 def reload_metadata_from_disk(book_id):
     """Re-read embedded metadata from the book's on-disk file and update
     the Calibre catalog. Fork issue #218 (@yodatak): users who edit EPUB
@@ -2803,11 +2813,8 @@ def reload_metadata_from_disk(book_id):
                                format=file_ext.upper(), err=str(ex))), 500
 
     try:
-        # Field mutations are session-local — the edit-book POST path runs
-        # them unlocked too, and takes metadata_db_write_lock only around
-        # the final COMMIT (the lock's contract is single-commit duration;
-        # holding it across file renames would starve the ingest
-        # coordinator, #192). Same for the dir move below.
+        # The route holds the writer lock across relationship changes,
+        # possible session autoflush, directory moves, and the final commit.
         # File size is metadata too: external conversion/replacement changes
         # the bytes on disk without updating data.uncompressed_size. Re-stat
         # every real format inside this same rollback/commit boundary.
@@ -2925,11 +2932,8 @@ def reload_metadata_from_disk(book_id):
                             err=str(rename_error))), 500
 
         if updated:
-            # Only the COMMIT takes the writers' lock — single-commit
-            # duration per the lock's contract.
-            with metadata_db_write_lock():
-                helper.mark_book_modified(book, set_dirty=False)
-                calibre_db.session.commit()
+            helper.mark_book_modified(book, set_dirty=False)
+            calibre_db.session.commit()
             log.info("Reloaded metadata for book %d from disk (fields: %s)",
                      book.id, ', '.join(updated))
         else:

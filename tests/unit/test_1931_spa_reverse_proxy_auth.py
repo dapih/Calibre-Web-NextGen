@@ -255,6 +255,26 @@ def test_production_factory_hook_identifies_header_user_on_spa_surfaces(
     assert harness.seen_remote_addresses == [_CLIENT_HOP, _CLIENT_HOP]
 
 
+@pytest.mark.parametrize("header", ["Remote-User", "Content-Type", "Content-Length"])
+def test_native_lan_marker_disables_proxy_header_login_for_any_configured_header(
+    monkeypatch, tmp_path, header
+):
+    harness = _factory_app(monkeypatch, tmp_path)
+    harness.config.config_reverse_proxy_login_header_name = header
+    client = harness.app.test_client()
+    # Content-Length must remain numeric for the WSGI client; any nonempty
+    # value identifies a mocked user if the trusted marker is ignored.
+    value = "41" if header == "Content-Length" else "proxy-reader"
+    response = client.get(
+        "/api/v1/auth/me", headers={header: value},
+        environ_overrides={"REMOTE_ADDR": "192.168.3.25", "cwng.native_lan": True},
+    )
+    assert response.status_code == 401
+    assert "X-Test-Authenticated-As" not in response.headers
+    harness.db_session.query.assert_not_called()
+    harness.create_user.assert_not_called()
+
+
 def test_factory_hook_ignores_same_header_when_feature_disabled(
     monkeypatch, tmp_path
 ):

@@ -401,16 +401,20 @@ class TestSqliteBusyTimeoutPragma:
         path = REPO_ROOT / "cps" / "db.py"
         src = path.read_text(encoding="utf-8")
 
-        # Find the setup_db classmethod source. The PRAGMA must be
-        # there, with at least 60000ms (60s).
+        # setup_db acquires the native guard and delegates to the shared
+        # implementation, which must retain the busy timeout on all platforms.
         tree = ast.parse(src)
         setup_db = None
+        implementation = None
         for node in ast.walk(tree):
             if isinstance(node, ast.FunctionDef) and node.name == "setup_db":
                 setup_db = node
-                break
+            if isinstance(node, ast.FunctionDef) and node.name == "_setup_db_locked":
+                implementation = node
         assert setup_db is not None, "setup_db classmethod must exist in db.py"
-        fn_src = ast.get_source_segment(src, setup_db) or ""
+        assert implementation is not None, "setup_db implementation must exist"
+        assert "_setup_db_locked" in (ast.get_source_segment(src, setup_db) or "")
+        fn_src = ast.get_source_segment(src, implementation) or ""
         assert "busy_timeout" in fn_src.lower(), (
             "setup_db must set PRAGMA busy_timeout — without it, "
             "concurrent ingest fails outright on mergerfs/SMB/NFS."

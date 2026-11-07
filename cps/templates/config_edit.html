@@ -4,13 +4,16 @@
     <div class="alert alert-info"><div class="css-spinner" role="status" aria-label="{{ _('Loading') }}"></div></div>
         <select name="config_login_type" id="config_login_type" class="form-control" data-controlall="login-settings" {% if generic_oauth_environment_managed and generic_oauth_environment_active %}disabled{% endif %}>
            <option value="0" {% if config.config_login_type == 0 %}selected{% endif %}>{{_('Use Standard Authentication')}}</option>
-           {% if feature_support['ldap'] %}
+           {% if feature_support['ldap'] and not cwng_native_mode %}
            <option value="1" {% if config.config_login_type == 1 %}selected{% endif %}>{{_('Use LDAP Authentication')}}</option>
            {% endif %}
-           {% if feature_support['oauth'] %}
+           {% if feature_support['oauth'] and not cwng_native_mode %}
            <option value="2" {% if config.config_login_type == 2 %}selected{% endif %}>{{_('Use OAuth')}}</option>
            {% endif %}
         </select>
+        {% if cwng_native_mode %}
+        <small class="form-text text-muted">{{_('LDAP and OAuth login are not yet supported in native Windows mode.')}}</small>
+        {% endif %}
         {% if generic_oauth_environment_managed %}
         <small class="form-text text-muted">{{_('Generic OIDC is managed by the environment. Its settings and secret cannot be changed here; secret-file rotation takes effect after restart.')}}</small>
         {% if generic_oauth_environment_error %}<div class="alert alert-warning" role="status">{{_('Generic OIDC is inactive because its environment configuration is incomplete or invalid: %(reason)s', reason=generic_oauth_environment_error)}}</div>{% endif %}
@@ -111,6 +114,9 @@
           <label for="config_port">{{_('Server Port')}}</label>
           <input type="number" min="1" max="65535" class="form-control" name="config_port" id="config_port" value="{% if config.config_port != None %}{{ config.config_port }}{% endif %}" autocomplete="off" required>
         </div> -->
+        {% if cwng_native_mode %}
+        <div class="help-block">{{_('HTTPS is not yet supported in native Windows mode. Local and home-network connections use HTTP.')}}</div>
+        {% else %}
         <label for="config_certfile">{{_('SSL certfile location (leave it empty for non-SSL Servers)')}}</label>
          <div class="form-group input-group">
           <input type="text" class="form-control" id="config_certfile" name="config_certfile" value="{% if config.config_certfile != None %}{{ config.config_certfile }}{% endif %}" autocomplete="off">
@@ -125,6 +131,10 @@
             <button type="button" id="keyfile_path" data-toggle="modal" data-link="config_keyfile" data-target="#fileModal" class="btn btn-default"><span class="glyphicon glyphicon-folder-open"></span></button>
           </span>
         </div>
+        {% endif %}
+        {% if cwng_native_mode %}
+        <p>{{ _('Change the update channel from the CWNG tray.') }}</p>
+        {% else %}
         <div class="form-group">
           <label for="config_updatechannel">{{_('Update Channel')}}</label>
             <select name="config_updatechannel" id="config_updatechannel" class="form-control">
@@ -132,6 +142,7 @@
               <option value="2" {% if config.config_updatechannel == 2 %}selected{% endif %}>{{_('Nightly')}}</option>
             </select>
         </div>
+        {% endif %}
         <div class="form-group">
           <label for="config_trustedhosts">{{_('Trusted Hosts (Comma Separated)')}}</label>
           <input type="text" class="form-control" id="config_trustedhosts" name="config_trustedhosts" value="{% if config.trustedhosts != None %}{{ config.config_trustedhosts }}{% endif %}" autocomplete="off">
@@ -400,11 +411,13 @@
       <label for="config_allow_reverse_proxy_header_login">{{_('Allow Reverse Proxy Authentication')}}</label>
       <div class="help-block">{{_('Trusts the "Remote-User" header from a reverse proxy for authentication. This is an authentication method, distinct from the HTTPS security setting below.')}}</div>
     </div>
+    {% if not cwng_native_mode %}
     <div class="form-group">
         <input type="checkbox" id="config_use_https" name="config_use_https" {% if config.config_use_https %}checked{% endif %}>
         <label for="config_use_https">{{_('Use via HTTPS')}}</label>
         <div class="help-block">{{_('Enables secure cookie settings (Secure, SameSite=Lax). Enable this ONLY if you are accessing the server via HTTPS, otherwise you will be locked out.')}}</div>
     </div>
+    {% endif %}
     <div data-related="reverse-proxy-login-settings">
       <div class="form-group">
         <label for="config_reverse_proxy_login_header_name">{{_('Reverse Proxy Header Name')}}</label>

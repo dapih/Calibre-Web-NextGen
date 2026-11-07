@@ -1264,6 +1264,12 @@ def set_custom_read_column_value(book_id, value, source="read-status"):
     column_id = getattr(config, "config_read_column", 0)
     if not column_id:
         return True
+    from .services.calibre_db_lock import metadata_db_write_lock
+    with metadata_db_write_lock():
+        return _set_custom_read_column_value_locked(book_id, value, source, column_id)
+
+
+def _set_custom_read_column_value_locked(book_id, value, source, column_id):
     try:
         book = calibre_db.get_book(book_id)
         if book is None:
@@ -1341,12 +1347,16 @@ def queue_hardcover_reading_progress(user, book_id, percentage):
         log.warning("Could not queue Hardcover progress for book %s: %s", book_id, ex)
 
 
-def edit_book_read_status(book_id, read_status=None, sync_hardcover=True):
+def edit_book_read_status(book_id, read_status=None, sync_hardcover=True, *, _metadata_lock_held=False):
     """Set or toggle the current user's read status for one book.
 
     ``sync_hardcover=False`` lets a bulk caller queue one Hardcover task for the
     whole selection instead of one per book (see ``queue_hardcover_mark_read``).
     """
+    if config.config_read_column and not _metadata_lock_held:
+        from .services.calibre_db_lock import metadata_db_write_lock
+        with metadata_db_write_lock():
+            return edit_book_read_status(book_id, read_status, sync_hardcover, _metadata_lock_held=True)
     if not config.config_read_column:
         book = ub.session.query(ub.ReadBook).filter(and_(ub.ReadBook.user_id == int(current_user.id),
                                                          ub.ReadBook.book_id == book_id)).first()
@@ -2874,7 +2884,7 @@ def _validate_and_normalize_staged_cover(staged_path):
             normalized = decoded.convert("RGB")
 
     normalized.save(staged_path, format="JPEG")
-    with open(staged_path, "rb") as staged_file:
+    with open(staged_path, "r+b" if os.name == "nt" else "rb") as staged_file:
         os.fsync(staged_file.fileno())
     with PILImage.open(staged_path) as verified:
         if verified.format != "JPEG":
@@ -2936,7 +2946,8 @@ def _create_cover_stage(directory, prefix):
         log.error("Could not register cover stage %s: %s", staged_path, ex)
     try:
         fd = os.open(staged_path,
-                     os.O_RDWR | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
+                     os.O_RDWR | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0) |
+                     getattr(os, "O_BINARY", 0), 0o600)
     except BaseException:
         _forget_cover_stage(staged_path)
         raise
@@ -3041,7 +3052,8 @@ def save_cover_from_filestorage(filepath, saved_filename, img, handle_factory=No
             os.close(fd)
             fd = None
         else:
-            sync_fd = os.open(staged_path, os.O_RDONLY)
+            sync_fd = os.open(staged_path, (os.O_RDWR if os.name == "nt" else os.O_RDONLY) |
+                              getattr(os, "O_BINARY", 0))
             try:
                 os.fsync(sync_fd)
             finally:

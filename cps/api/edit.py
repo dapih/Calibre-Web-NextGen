@@ -26,6 +26,7 @@ from ..helper import (convert_book_format, save_cover, save_cover_from_url, tags
                      get_convert_options, mark_book_modified, log_metadata_change,
                      replace_cover_thumbnail_cache, book_cover_is_locked)
 from ..services import isbn_extract
+from ..services.calibre_db_lock import metadata_db_write_lock
 
 # Fields the SPA edit form can change, applied in this order. Title/authors come
 # first because they may restructure the book's directory; the rest follow.
@@ -557,19 +558,19 @@ def update_metadata(book_id):
             if not id_type or not id_val:
                 continue  # skip blank rows (a half-filled row isn't an error)
             input_identifiers.append(db.Identifiers(id_val, id_type, book_id))
-        changed, id_error = modify_identifiers(
-            input_identifiers, book.identifiers, calibre_db.session)
-        if id_error:
-            # A duplicate type may have already queued partial add/deletes on the
-            # session — discard them so a rejected payload never persists partially.
-            calibre_db.session.rollback()
-            errors["identifiers"] = "Duplicate identifier type — each type may appear once."
-        elif changed:
-            try:
-                calibre_db.session.commit()
-            except Exception as exc:  # noqa: BLE001 — surface as a field error, don't 500
+        with metadata_db_write_lock():
+            changed, id_error = modify_identifiers(
+                input_identifiers, book.identifiers, calibre_db.session)
+            if id_error:
+                # Reject partial edits from a duplicate identifier type.
                 calibre_db.session.rollback()
-                errors["identifiers"] = str(exc)
+                errors["identifiers"] = "Duplicate identifier type — each type may appear once."
+            elif changed:
+                try:
+                    calibre_db.session.commit()
+                except Exception as exc:  # noqa: BLE001 — surface as a field error, don't 500
+                    calibre_db.session.rollback()
+                    errors["identifiers"] = str(exc)
 
     # Re-fetch so the response reflects the committed state.
     fresh = _editable_book(book_id)
@@ -683,6 +684,7 @@ def convert_format(book_id):
 
 @api_v1.route("/books/<int:book_id>/cover", methods=["POST"])
 @login_required_if_no_ano
+@metadata_db_write_lock()
 def set_cover(book_id):
     """Replace a book's cover from an uploaded image (multipart `file`) or a
     remote URL (JSON {url}). Reuses helper.save_cover / save_cover_from_url so the
@@ -732,13 +734,6 @@ def set_cover(book_id):
     # browser until it was evicted. cover_picker's apply path has always done
     # this; this one did not. Single source of truth: helper.mark_book_modified.
     #
-    # NOT held under services.calibre_db_lock.metadata_db_write_lock, which
-    # editbooks.do_edit_book and api.browse do take. That lock hard-codes
-    # /config for its lock file rather than resolving the configured config dir,
-    # so on an install without /config (any bare-metal deployment) acquiring it
-    # raises — and adopting it here would turn a working cover upload into a 500
-    # on exactly those installs. Recorded as a finding rather than papered over;
-    # the fix belongs in the lock's path resolution, not in this caller.
     previous_has_cover = book.has_cover
     previous_last_modified = book.last_modified
     try:

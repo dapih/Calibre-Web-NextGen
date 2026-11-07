@@ -22,7 +22,7 @@ import sqlite3
 
 import app_paths
 import service_user
-from calibre_library_target import ownership, operation
+from calibre_library_target import ownership, operation, private_tool, require_native_writer_lease
 from cwa_db import CWA_DB
 import script_lock
 from kindle_epub_fixer import EPUBFixer
@@ -135,7 +135,7 @@ def make_private_tmp_dir(shared_tmp_dir):
 
 # Tools left to finish on cancel: stopping calibredb part-way through add_format
 # can leave a file copied into the book folder that metadata.db never records.
-_FINISH_ON_CANCEL = ("calibredb",)
+_FINISH_ON_CANCEL = ("calibredb", "calibredb.exe")
 
 
 def _signal_tool(child, sig):
@@ -315,7 +315,7 @@ class LibraryConverter:
             print_and_log(f"[convert-library]: Retrieving book format information from library: {self.library_dir}")
             
         try:
-            args = ["calibredb", "list", "--fields=id,formats", f"--library-path={self.library_dir}", "--for-machine"]
+            args = [private_tool("calibredb"), "list", "--fields=id,formats", f"--library-path={self.library_dir}", "--for-machine"]
             
             if self.verbose:
                 print_and_log(f"[convert-library]: Running command: {' '.join(args)}")
@@ -543,6 +543,8 @@ class LibraryConverter:
         """Convert every book in to_convert; returns how many were converted and imported."""
         converted = 0
         for file in self.to_convert:
+            if _native_cancel_requested():
+                break
             filename = os.path.basename(file)
             file_extension = Path(file).suffix
 
@@ -576,7 +578,7 @@ class LibraryConverter:
             else:
                 try: # Convert Book to target format (target is not kepub)
                     target_filepath = f"{self.tmp_conversion_dir}{Path(file).stem}.{self.target_format}"
-                    self._run_streaming(["ebook-convert", file, target_filepath], env=self.calibre_env)
+                    self._run_streaming([private_tool("ebook-convert"), file, target_filepath], env=self.calibre_env)
 
                     if self.cwa_settings['auto_backup_conversions']:
                         self.backup(file, backup_type="converted")
@@ -602,7 +604,7 @@ class LibraryConverter:
             try: # Import converted book to library. As of V3.0.0, "add_format" is used instead of "add"
                 with operation(timeout=300):
                     self._run_streaming(
-                        ["calibredb", "add_format", book_id, target_filepath, f"--library-path={self.library_dir}"],
+                        [private_tool("calibredb"), "add_format", book_id, target_filepath, f"--library-path={self.library_dir}"],
                         env=self.calibre_env)
 
                 if self.cwa_settings['auto_backup_imports']:
@@ -644,7 +646,7 @@ class LibraryConverter:
             print_and_log(f"\n[convert-library]: ({self.current_book}/{len(self.to_convert)}) *** NOTICE TO USER: Kepubify is limited in that it can only convert from epubs. To get around this, CWA will automatically convert other supported formats to epub using the Calibre's conversion tools & then use Kepubify to produce your desired kepubs. Obviously multi-step conversions aren't ideal so if you notice issues with your converted files, bare in mind starting with epubs will ensure the best possible results***\n")
             try: # Convert book to epub format so it can then be converted to kepub
                 epub_filepath = f"{self.tmp_conversion_dir}{Path(filepath).stem}.epub"
-                self._run_streaming(["ebook-convert", filepath, epub_filepath], env=self.calibre_env)
+                self._run_streaming([private_tool("ebook-convert"), filepath, epub_filepath], env=self.calibre_env)
 
                 if self.cwa_settings['auto_backup_conversions']:
                     self.backup(filepath, backup_type="converted")
@@ -660,7 +662,7 @@ class LibraryConverter:
             target_filepath = f"{self.tmp_conversion_dir}{epub_filepath.stem}.kepub"
             try:
                 self._run_streaming(
-                    ['kepubify', '--inplace', '--calibre', '--output', self.tmp_conversion_dir, epub_filepath])
+                    [private_tool('kepubify'), '--inplace', '--calibre', '--output', self.tmp_conversion_dir, epub_filepath])
 
                 if self.cwa_settings['auto_backup_conversions']:
                     self.backup(filepath, backup_type="converted")
@@ -799,6 +801,10 @@ def _main():
         logger.info(f"\nNextGen Convert Library Service - Run Ended: {datetime.now()}")
         sys.exit(0)
 
+    if _native_cancel_requested():
+        print_and_log('[convert-library]: Cancelled after the current operation; review is required.')
+        logger.info(f"\nNextGen Convert Library Service - Run Cancelled: {datetime.now()}")
+        sys.exit(2)
     failed = len(converter.to_convert) - converted
     if failed:
         print_and_log(f"\n[convert-library]: Library conversion complete. {converted} of {len(converter.to_convert)} books converted; {failed} failed, see the errors above. Exiting now...")
@@ -811,6 +817,11 @@ def _main():
 _maintenance_fd = None
 
 
+def _native_cancel_requested():
+    path = os.environ.get('CWNG_NATIVE_CANCEL_FILE')
+    return bool(os.name == 'nt' and os.environ.get('CWNG_NATIVE_MODE') == '1' and path and Path(path).is_file())
+
+
 def _child_ownership():
     return {"pass_fds": (_maintenance_fd,)} if _maintenance_fd is not None and os.name != "nt" else {}
 
@@ -818,6 +829,7 @@ def _child_ownership():
 def main():
     global _maintenance_fd
     try:
+        require_native_writer_lease()
         with ownership.maintenance(str(app_paths.config_dir()), wait_timeout=120) as fd:
             _maintenance_fd = fd
             try:

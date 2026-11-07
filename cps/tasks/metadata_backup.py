@@ -10,6 +10,7 @@ from lxml import etree
 
 from cps import config, db, gdriveutils, logger
 from cps.services.worker import CalibreTask
+from cps.services.calibre_db_lock import metadata_db_write_lock
 from flask_babel import lazy_gettext as N_
 
 from ..epub_helper import create_new_metadata_backup
@@ -27,6 +28,7 @@ class TaskBackupMetadata(CalibreTask):
         self.translated_title = translated_title
         self.set_dirty = set_dirty
 
+    @metadata_db_write_lock()
     def run(self, worker_thread):
         self.calibre_db = db.CalibreDB(expire_on_commit=False, init=True)
         if self.set_dirty:

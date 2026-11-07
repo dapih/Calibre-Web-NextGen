@@ -97,7 +97,7 @@ def test_merge_format_mutation_advances_target_last_modified(
     monkeypatch.setattr(editbooks.db, "Data", _Data)
     monkeypatch.setattr(
         editbooks,
-        "delete_book_from_table",
+        "_delete_book_from_table_locked",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(

@@ -1433,6 +1433,9 @@ def main():
     parser.add_argument('--all', '-a', required=False, default=False, action='store_true', help='Will attempt to fix any issues in every EPUB in th user\'s library')
 
     args = parser.parse_args()
+    if args.input_file or args.all:
+        from calibre_library_target import require_native_writer_lease
+        require_native_writer_lease()
     # logger.info(f"NextGen Kindle EPUB Fixer Service - Run Started: {datetime.now()}\n")
 
     ### CATCH INCOMPATIBLE COMBINATIONS OF ARGUMENTS

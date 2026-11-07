@@ -2248,8 +2248,9 @@ def _publish_cover_without_replacement(staging, destination):
     except FileExistsError:
         return False
     except OSError as error:
-        if error.errno not in {errno.EPERM, errno.ENOSYS, errno.ENOTSUP,
-                              errno.EOPNOTSUPP, errno.EXDEV, errno.EINVAL}:
+        if (error.errno not in {errno.EPERM, errno.ENOSYS, errno.ENOTSUP,
+                                errno.EOPNOTSUPP, errno.EXDEV, errno.EINVAL}
+                and not (os.name == "nt" and getattr(error, "winerror", None) == 5)):
             raise
     # Some library filesystems cannot create hard links. Native exclusive rename
     # preserves both completeness and no-replace semantics; ordinary POSIX rename
