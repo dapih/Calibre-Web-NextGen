@@ -14,7 +14,17 @@ from windows_portable import portable_environment
 
 def main():
     with portable_environment(ROOT):
-        run()
+        from cps import web_server
+        web_server.defer_restart = True
+        try:
+            run()
+        except SystemExit as error:
+            if error.code not in (None, 0):
+                raise
+        restart = web_server.restart
+    # windows-start.ps1 reserves 75 for a requested restart. Its original
+    # command runs again only after both workers and running.lock are released.
+    sys.exit(75 if restart else 0)
 
 
 def run():

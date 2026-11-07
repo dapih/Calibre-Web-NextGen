@@ -55,6 +55,7 @@ class WebServer(object):
         self.wsgiserver = None
         self.access_logger = None
         self.restart = False
+        self.defer_restart = False
         self.app = None
         self.listen_address = None
         self.listen_port = None
@@ -292,6 +293,10 @@ class WebServer(object):
             return True
 
         log.info("Performing restart of Calibre-Web NextGen")
+        if self.defer_restart:
+            # The Windows launcher relaunches after workers and its instance
+            # lock have been cleaned up, preserving the interpreter options.
+            return True
         from . import content_server
         content_server.stop_before_app_exit()
         args = self._get_args_for_reloading()

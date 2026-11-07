@@ -35,6 +35,12 @@ The original failure was reproduced with a 164-character library root. The fix t
 
 The pre-change impact map was refreshed at `f21163639` / cps tree `dd917470148e6adcd4f4bf2e2ec0be3f535d4f24`. High-confidence `exact_import_symbol` links identify metadata export, conversion and managed-server consumers of the shared addressing policy; `exact_local_symbol` links server startup to argument construction. The policy module has 33 unresolved calls (17 unknown receivers, 7 callbacks, 5 unbound names, 4 ambiguous attributes); the server module has 64 (33 unknown receivers, 18 receiver guesses, 7 ambiguities, 6 callbacks). Python-only coverage omits templates/frontend; measured recall ranges roughly 12.5–80%, and the refreshed curated result remained 8/10 with the same two misses recorded above. Standalone scripts and vendor execution were inspected and verified directly.
 
+## Windows lifecycle verification
+
+The real admin Restart control returned the app, but originally dropped `-I -X utf8` and bypassed the Windows worker/lock cleanup path. Restart now returns to the launcher only after both background workers join and the portable context releases `running.lock`; PowerShell relaunches with the original interpreter options and listen address. The one-time legacy-copy flag is consumed before any restart. The focused cleanup-order test failed on the original implementation and all three cases passed after the fix, including shutdown and nonzero failure propagation. Real authenticated checks confirmed an old PID exited, exactly one replacement PID belonged to the same PowerShell launcher, its command retained `-I -X utf8`, and the existing book was served. Shutdown stopped HTTP and released the instance lock.
+
+The pre-change impact refresh checked `ff3a6052b` / cps tree `c0d9945e77517397c81157c577f521acf0b02a4b`. `cps.__init__` constructs `WebServer` through a high-confidence `exact_import_symbol` edge; the class reaches content-server exit cleanup through `exact_import_module_attribute`. Its 64 unresolved calls comprise 51 unknown receivers, 6 receiver guesses, 5 dynamic names, 1 ambiguous attribute and 1 callback. The map names no live route reaching the class, so the admin endpoint and standalone launcher were inspected directly. The map omits frontend/templates, has a roughly 12.5–80% recall range, and the refreshed curated result remains 8/10 with the same two misses listed above.
+
 ## Retained footprint
 
 Measured before the final setup rerun; source and user data are separate:

@@ -25,10 +25,16 @@ $env:MAGICK_CODER_MODULE_PATH = Join-Path $magick 'modules\coders'
 Push-Location $root
 try {
     Write-Host 'Open http://127.0.0.1:8083 in your browser. Press Ctrl+C to stop.'
-    $launchArgs = @((Join-Path $root 'scripts\windows-run.py'), '-i', $ListenAddress)
-    if ($ImportLegacyData) { $launchArgs += '--import-legacy-data' }
-    & $python -I -X utf8 @launchArgs
-    if ($LASTEXITCODE -ne 0) { throw 'The application stopped with an error. See the message above.' }
+    do {
+        $launchArgs = @((Join-Path $root 'scripts\windows-run.py'), '-i', $ListenAddress)
+        if ($ImportLegacyData) {
+            $launchArgs += '--import-legacy-data'
+            $ImportLegacyData = $false # Copy once; a restart uses the adopted data.
+        }
+        & $python -I -X utf8 @launchArgs
+        $appExitCode = $LASTEXITCODE
+    } while ($appExitCode -eq 75) # Requested restart after Windows cleanup.
+    if ($appExitCode -ne 0) { throw 'The application stopped with an error. See the message above.' }
 } finally {
     $env:PATH = $savedPath
     $env:MAGICK_HOME = $savedMagickHome

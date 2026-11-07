@@ -10,6 +10,12 @@ The existing first-run login is `admin` / `admin123`. Change that password befor
 
 Until a library is configured, browser login uses the classic login and database configuration pages. After configuration, the new web interface is the default.
 
+## Restarting and stopping
+
+Wait for uploads/conversions to finish, then open `http://127.0.0.1:8083/admin/view` as an administrator. Near the bottom, choose **Restart** or **Shutdown** and confirm. Restart waits for the Windows background workers and instance lock to finish before the launcher starts a replacement with the same isolated Python and UTF-8 options. Refresh the browser when it is ready. Legacy data copying runs only on the first launch, not on each restart.
+
+After Shutdown, run `start-windows.cmd` to start again. If you started it in a visible console, Ctrl+C also stops it. Closing the browser leaves the application running.
+
 ## Where files live
 
 | Folder | Contents |
