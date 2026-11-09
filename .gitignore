@@ -328,6 +328,7 @@ wiki-generated/
 # Disposable native Windows proof runtime, wheel build and logs.
 /.m0/
 
-# Application-local Windows runtime and tools.
+# Windows installation artifacts and private local data.
 /.cwng-runtime/
 /.cwng-data/
+/library/

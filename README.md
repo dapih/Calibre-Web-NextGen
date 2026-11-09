@@ -145,12 +145,12 @@ Choose the [Windows source installation](#windows-portable-source-installation) 
 
 Use Windows x64 and a writable folder. Setup needs internet access; it downloads the runtime and tools locally without Docker, WSL, a global Python/Calibre installation or a system PATH change.
 
-1. Clone or download this repository, then run [`install-windows.cmd`](install-windows.cmd).
+1. Clone or download this repository into a writable folder, then run [`install-windows.cmd`](install-windows.cmd). If you develop the app as well, use a separate source copy for the installation you run.
 2. Run [`start-windows.cmd`](start-windows.cmd) and open [http://127.0.0.1:8083](http://127.0.0.1:8083).
 3. Sign in as `admin` / `admin123`. On the Database Configuration page, select an existing Calibre library containing `metadata.db`. To create an empty library, run [`create-windows-library.cmd`](create-windows-library.cmd) and select the directory it prints; the default is `.cwng-data\library`. The helper refuses to replace an existing library or use a nonempty folder.
 4. Change the admin password. Put copies of books in `.cwng-data\ingest` and wait for import/conversion to finish before checking the library. Ingest files are processed and removed; keep your originals elsewhere.
 
-The runtime lives in `.cwng-runtime`; settings, accounts, logs and the default ingest folder live in `.cwng-data`. Both folders are ignored by Git. Keep any libraries stored elsewhere out of version control too. Deep library roots use short directory junctions without drive letters; saved library paths stay real.
+The tracked source includes `cps/`, `scripts/` and `frontend/`. Setup creates the replaceable tools in `.cwng-runtime/` and generates the browser bundle in `cps/static/app/`. Keep settings, accounts and ingest in `.cwng-data/` and keep book libraries outside the runtime. Git ignores these local outputs and a root-level `library/`. Deep library roots use short directory junctions without drive letters. Saved library paths stay real.
 
 **Restart or stop:** Wait for imports/conversions to finish, open the [Admin page](http://127.0.0.1:8083/admin/view), then choose **Restart** or **Shutdown** near the bottom and confirm. Restart waits for the Windows workers to finish before relaunching. After Shutdown, run `start-windows.cmd` to start again. Closing the browser leaves the app running.
 

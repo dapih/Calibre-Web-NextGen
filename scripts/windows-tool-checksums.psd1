@@ -1,0 +1,6 @@
+@{
+    # Windows assets matching the shared Dockerfile pins.
+    'cpython-3.13.14+20260623-x86_64-pc-windows-msvc-install_only_stripped.tar.gz' = '7C3159205DDA0289A47E6DD1226C4E5800B1F99A03146CDC25A41FED8EF74F5A'
+    'calibre-portable-installer-9.11.0.exe' = 'F575080F60E3D1EF48A454C0DB27B7C118C060C9E841F1A1914E091AE619B23F'
+    'v4.0.4/kepubify-windows-64bit.exe' = 'F3DEE3ECE063329661FEF474262FE403812335BF1676EAB35B672565BF195738'
+}

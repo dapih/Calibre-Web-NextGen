@@ -1,30 +1,40 @@
-# Install a standalone Python runtime inside the application directory.
-param([Parameter(Mandatory = $true)][string]$AppRoot)
+# Install a standalone Python runtime and application dependencies locally.
+param([Parameter(Mandatory = $true)][string]$AppRoot, [hashtable]$Pin)
 
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'windows-runtime.ps1')
+if (-not $Pin) { $Pin = (Get-CwngWindowsToolPins $AppRoot).python }
 $runtime = Join-Path $AppRoot '.cwng-runtime'
-$python = Join-Path $runtime 'python\python.exe'
 
-if (-not (Test-Path -LiteralPath $python -PathType Leaf)) {
-    New-Item -ItemType Directory -Force -Path $runtime | Out-Null
-    $archive = Join-Path $runtime 'python-download.tar.gz'
-    $url = 'https://github.com/astral-sh/python-build-standalone/releases/download/20260623/cpython-3.13.14%2B20260623-x86_64-pc-windows-msvc-install_only.tar.gz'
-    $expected = '646254B53FBAC69C1B3C25131C237C9136E9BBED7444123880CEA8DEAF555E1F'
+function Install-ApplicationDependencies {
+    param([string]$Interpreter)
+
+    $build = Join-Path $AppRoot 'build'
+    $metadata = Join-Path $AppRoot 'calibre_web_automated.egg-info'
+    $createdBySetup = @($build, $metadata) | Where-Object { -not (Test-Path -LiteralPath $_) }
     try {
-        Write-Host 'Downloading Python for this application...'
-        Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile $archive
-        if ((Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash -ne $expected) {
-            throw 'The Python download did not match its expected checksum.'
-        }
-        & (Join-Path $env:SystemRoot 'System32\tar.exe') -xzf $archive -C $runtime
-        if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $python -PathType Leaf)) {
-            throw 'Could not extract the application Python runtime.'
-        }
+        & $Interpreter -I -m pip install --no-cache-dir --no-warn-script-location $AppRoot
+        if ($LASTEXITCODE -ne 0) { throw 'Could not install the application dependencies.' }
+        & $Interpreter -I -m pip --disable-pip-version-check --no-cache-dir check
+        if ($LASTEXITCODE -ne 0) { throw 'The installed Python dependencies are inconsistent.' }
     } finally {
-        Remove-Item -LiteralPath $archive -Force -ErrorAction SilentlyContinue
+        foreach ($directory in $createdBySetup) {
+            if ((Split-Path -Parent $directory) -eq $AppRoot -and (Test-Path -LiteralPath $directory)) {
+                Remove-Item -LiteralPath $directory -Recurse -Force
+            }
+        }
     }
 }
 
-# Use this interpreter directly: venv launchers and pyvenv.cfg retain the old
-# installation path when a folder moves. Dependencies live beside this runtime.
-return $python
+$updated = Install-CwngWindowsTool -RuntimeRoot $runtime -Name python -Pin $Pin -RequiredFiles @('python.exe', 'Lib\site-packages\pip\__init__.py') -Stage {
+    param($work, $asset)
+    $archive = Join-Path $work 'python.tar.gz'
+    Write-Host 'Downloading stripped Python for this application...'
+    Save-CwngWindowsDownload $asset $archive
+    & (Join-Path $env:SystemRoot 'System32\tar.exe') -xzf $archive -C $work
+    if ($LASTEXITCODE -ne 0) { throw 'Could not extract the application Python runtime.' }
+    Install-ApplicationDependencies (Join-Path $work 'python\python.exe')
+}
+if (-not $updated) {
+    Install-ApplicationDependencies (Join-Path $runtime 'python\python.exe')
+}

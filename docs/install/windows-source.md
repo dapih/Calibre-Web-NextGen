@@ -18,16 +18,21 @@ After Shutdown, run `start-windows.cmd` to start again. If you started it in a v
 
 ## Where files live
 
-| Folder | Contents |
-| --- | --- |
-| `.cwng-runtime` | Standalone Python, application dependencies, Calibre, ImageMagick and kepubify |
-| `.cwng-data\config` | Application databases, keys, logs, recovery markers and conversion scratch space |
-| `.cwng-data\ingest` | Default ingest folder; displayed on launch |
-| `.cwng-data\calibre-config` | Settings for the included Calibre tools |
-| `.cwng-data\library` | Default location for a new library made by the creation helper; existing selected libraries stay where they are |
-| `.cwng-data\location.json` | Previous application location, used to update internal paths after a move |
+| Folder | Role | Contents |
+| --- | --- | --- |
+| `cps/`, `scripts/`, `frontend/` | Source | Server, setup and launch scripts, and frontend source |
+| `cps/static/app/` | Generated | Built browser assets served by CWNG |
+| `.cwng-runtime/` | Replaceable installation files | Stripped standalone Python, application dependencies, Calibre, ImageMagick and kepubify |
+| `.cwng-data/config/` | Local data | Application databases, keys, logs, recovery markers and conversion scratch space |
+| `.cwng-data/ingest/` | Local data | Default ingest folder shown at launch |
+| `.cwng-data/calibre-config/` | Local data | Settings for the included Calibre tools |
+| `.cwng-data/library/` | Local data | Default location for a library made by the creation helper |
+| `.cwng-data/location.json` | Local data | Previous application location, used to update internal paths after a move |
+| `library/` or a selected path | Local data | An existing library can stay at its current location |
 
-The runtime uses its own Python directly, without a virtual environment or an editable source installation. Setup removes Python build metadata and frontend/Node build directories it creates; pre-existing developer directories remain.
+Git tracks the source and setup recipes. It ignores generated browser assets, the installed runtime, local data and a root-level `library/`. Setup downloads the pinned tools and installs the application's Python dependencies. Configuration can contain credentials, and libraries contain personal files. Keep libraries outside `.cwng-runtime/` so setup can safely replace tools. To keep development files separate from the instance you use, run setup from a dedicated copy of the source.
+
+The runtime uses its own Python directly, without a virtual environment or an editable source installation. Setup removes the Python build metadata and frontend/Node build directories it creates. Pre-existing developer directories remain.
 
 ## Long Windows library paths
 
@@ -51,11 +56,15 @@ If copying fails, the original folders remain. If local config/ingest folders al
 
 ## Moving, updating and removal
 
-Stop the application and wait for imports to finish before moving it. Move the entire application folder, including the hidden `.cwng-runtime` and `.cwng-data` folders and any library inside it, then run `start-windows.cmd` from the new location. Moving an installed folder does not require setup or a download. The launcher updates known filesystem settings that pointed inside the old application folder, including an internal library and tool paths. External library paths stay external; those libraries must still be available at their configured paths. Windows Calibre aliases are regenerated from the destination path.
+Stop the application and wait for imports to finish before moving it. Move the entire application folder, including `.cwng-runtime`, `.cwng-data` and any library inside it, then run `start-windows.cmd` from the new location. Moving an installed folder requires only the launcher. The launcher updates known filesystem settings that pointed inside the old application folder, including an internal library and tool paths. Libraries stored elsewhere must still be available at their configured paths. Windows Calibre aliases are regenerated from the destination path.
 
 A linked Git worktree also contains Git administrative references outside its folder. Use `git worktree move` when moving the development checkout and preserving Git operations. An application-only copy can run independently of Git; retain `cps`, `scripts`, `.cwng-runtime`, `.cwng-data`, `start-windows.cmd`, `VERSION`, `LICENSE` and `dirs.json`. Keep the full source checkout if you want to update or rebuild it with setup.
 
-To update, stop the application, back up `.cwng-data` and your library, update the source and rerun `install-windows.cmd`. Existing configuration and ingest data are retained. To remove the installation, stop it and delete its folder. **That also deletes any config, pending ingest and libraries inside it**; back up or move those first. External libraries and the retained legacy profile folders are not removed by setup or launch.
+To update, stop the application, back up `.cwng-data` and your library, update the source and rerun `install-windows.cmd`. Setup checks the installed asset receipt for each tool and stages replacements before swapping them into `.cwng-runtime`. The first run with this setup refreshes tools installed before receipts were introduced. Existing configuration, ingest data and libraries stay in place.
+
+Python, Calibre and kepubify use the shared version pins from the root `Dockerfile`. When merging an upstream pin change, add the verified SHA-256 for the corresponding Windows artifact to [`scripts/windows-tool-checksums.psd1`](../../scripts/windows-tool-checksums.psd1). Setup reports a missing checksum before touching the runtime. ImageMagick and build-only Node use their own Windows pins.
+
+To remove the installation, stop it and delete its folder. Back up or move any config, pending ingest and libraries stored inside it first.
 
 ## Interrupted imports
 
