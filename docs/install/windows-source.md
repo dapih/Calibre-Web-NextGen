@@ -14,7 +14,7 @@ After setup, CWNG opens the main web interface. If a library that was previously
 
 ## Installer and app launcher
 
-Put `cwng-installer.exe` in a writable folder. It manages the `CWNG` folder beside it. After you confirm a new installation, it checks the fork's published Windows releases, verifies the selected asset against its GitHub SHA-256, and prepares the app, bundled tools, and browser interface. It opens the app after a successful install and then exits.
+[Download `cwng-installer.exe` for Windows x64](https://github.com/dapih/Calibre-Web-NextGen/releases/download/windows-v4.1.62-r3/cwng-installer.exe) and run it in a writable folder. It manages the `CWNG` folder beside it. After you confirm a new installation, it checks the fork's published Windows releases, verifies the selected asset against its GitHub SHA-256, and prepares the app, bundled tools, and browser interface. It opens the app after a successful install and then exits.
 
 If the app is already installed, the installer offers **Reinstall**, **Uninstall**, and **Cancel**. It also offers **Open CWNG** when the app is running. Reinstall checks for the latest release, asks whether to retain `.cwng-data`, and preserves internal library files. If you select an internal library, CWNG uses it after reinstalling. Preserved reading progress is tied to the original library, so changing to a different library in the installer requires choosing fresh settings. For installs started from a console, shut down the console instance before reinstalling or uninstalling.
 

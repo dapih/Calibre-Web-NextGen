@@ -146,9 +146,7 @@ Choose the [Windows source installation](#windows-portable-source-installation) 
 
 Use Windows x64 and a writable folder. Setup needs internet access; it downloads the runtime and tools locally without Docker, WSL, a global Python/Calibre installation or a system PATH change.
 
-With the split Windows build, run `cwng-installer.exe` in a writable folder to install, reinstall, or uninstall the adjacent `CWNG` folder. It downloads the latest Windows release and opens the app after setup. For everyday use, open `CWNG\CWNG.exe`. Its system tray menu offers **Open CWNG**, **Restart**, and **Quit**. See the [installer and build instructions](docs/install/windows-source.md#installer-and-app-launcher).
-
-The [published Windows v4.1.62 download](https://github.com/dapih/Calibre-Web-NextGen/releases/download/windows-v4.1.62/CWNG.exe) uses the older combined launcher. Save it in a writable folder and double-click it to install.
+[Download `cwng-installer.exe` for Windows x64](https://github.com/dapih/Calibre-Web-NextGen/releases/download/windows-v4.1.62-r3/cwng-installer.exe) and run it in a writable folder. It downloads the latest Windows release, installs it in the adjacent `CWNG` folder, and opens the app. For everyday use, open `CWNG\CWNG.exe`. Its system tray menu offers **Open CWNG**, **Restart**, and **Quit**. Use the installer again to reinstall or uninstall. See the [Windows installation guide](docs/install/windows-source.md#installer-and-app-launcher).
 
 #### Install from source
 
