@@ -14,7 +14,7 @@ After setup, CWNG opens the main web interface. If a library that was previously
 
 ## Single executable launcher
 
-Put `CWNG.exe` in a writable folder and double-click it. The first launch creates a `CWNG` folder beside it, downloads the pinned tools, builds the browser interface and opens the app in your default browser. For later use and for moves, use the copy of `CWNG.exe` inside the installed folder. To use an existing Windows source installation and its data, place the EXE beside `start-windows.cmd` in the updated checkout.
+[Download `CWNG.exe` for Windows x64](https://github.com/dapih/Calibre-Web-NextGen/releases/download/windows-v4.1.62/CWNG.exe), save it in a writable folder, and double-click it. The first launch creates a `CWNG` folder beside it, downloads the pinned tools, builds the browser interface, and opens the app in your default browser. For later use and for moves, use the copy of `CWNG.exe` inside the installed folder. To use an existing Windows source installation and its data, place the EXE beside `start-windows.cmd` in the updated checkout.
 
 While CWNG runs, double-click its system tray icon to open the browser. Right-click for **Open CWNG**, **Restart**, and **Quit**. Your default browser decides whether to reuse a tab. Restart and Quit wait for the server to stop before relaunching it or closing the tray. Windows may initially place the icon under the overflow arrow. Run `CWNG.exe --background` to start in the tray and open the browser later.
 
