@@ -404,7 +404,16 @@ internal static class WindowsInstaller
                 throw new IOException("GitHub returned an unexpected download URL.");
             string archive = Path.Combine(stage, ".download");
             progress.Report("Downloading " + release["tag_name"] + " from GitHub…");
-            DownloadAsset(web, uri, archive, Convert.ToInt64(asset["size"]));
+            try
+            {
+                DownloadAsset(web, uri, archive, Convert.ToInt64(asset["size"]));
+            }
+            catch (Exception error)
+            {
+                if (!(error is WebException) && !(error is IOException)) throw;
+                progress.Report("Retrying the download with Windows PowerShell…");
+                DownloadWithPowerShell(uri, archive);
+            }
             VerifyAsset(archive, asset);
             progress.Report("Extracting the verified Windows release…");
             ExtractRelease(archive, stage, IsPayload(asset, "cwng-windows.zip"), (string)release["tag_name"]);
@@ -463,6 +472,26 @@ internal static class WindowsInstaller
                 remaining -= count;
             }
         }
+    }
+
+    private static void DownloadWithPowerShell(Uri url, string file)
+    {
+        var info = new ProcessStartInfo {
+            FileName = Path.Combine(Environment.SystemDirectory, @"WindowsPowerShell\v1.0\powershell.exe"),
+            Arguments = "-NoProfile -NonInteractive -Command \"$ErrorActionPreference = 'Stop'; " +
+                        "$ProgressPreference = 'SilentlyContinue'; " +
+                        "for ($attempt = 1; $attempt -le 3; $attempt++) { try { " +
+                        "$url = [UriBuilder]$env:CWNG_DOWNLOAD_URL; " +
+                        "$url.Query = 'cwng=' + [Guid]::NewGuid().ToString('N'); " +
+                        "Invoke-WebRequest -UseBasicParsing -Uri $url.Uri " +
+                        "-OutFile $env:CWNG_DOWNLOAD_PATH -TimeoutSec 90; break " +
+                        "} catch { if ($attempt -eq 3) { throw }; Start-Sleep -Milliseconds (500 * $attempt) } }\"",
+            UseShellExecute = false, CreateNoWindow = true,
+            RedirectStandardOutput = true, RedirectStandardError = true
+        };
+        info.EnvironmentVariables["CWNG_DOWNLOAD_URL"] = url.AbsoluteUri;
+        info.EnvironmentVariables["CWNG_DOWNLOAD_PATH"] = file;
+        Run(info, "The Windows release download failed.");
     }
 
     internal static void VerifyAsset(string archive, Dictionary<string, object> asset)
