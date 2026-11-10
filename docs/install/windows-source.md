@@ -12,13 +12,15 @@ The existing first-run login is `admin` / `admin123`. Change that password befor
 
 After setup, CWNG opens the main web interface. If a library that was previously configured cannot be opened, **Database Configuration** shows troubleshooting guidance.
 
-## Single executable launcher
+## Installer and app launcher
 
-[Download `CWNG.exe` for Windows x64](https://github.com/dapih/Calibre-Web-NextGen/releases/download/windows-v4.1.62/CWNG.exe), save it in a writable folder, and double-click it. The first launch creates a `CWNG` folder beside it, downloads the pinned tools, builds the browser interface, and opens the app in your default browser. For later use and for moves, use the copy of `CWNG.exe` inside the installed folder. To use an existing Windows source installation and its data, place the EXE beside `start-windows.cmd` in the updated checkout.
+Put `cwng-installer.exe` in a writable folder. It manages the `CWNG` folder beside it. After you confirm a new installation, it checks the fork's published Windows releases, verifies the selected asset against its GitHub SHA-256, and prepares the app, bundled tools, and browser interface. It opens the app after a successful install and then exits.
 
-While CWNG runs, double-click its system tray icon to open the browser. Right-click for **Open CWNG**, **Restart**, and **Quit**. Your default browser decides whether to reuse a tab. Restart and Quit wait for the server to stop before relaunching it or closing the tray. Windows may initially place the icon under the overflow arrow. Run `CWNG.exe --background` to start in the tray and open the browser later.
+If the app is already installed, the installer offers **Reinstall**, **Uninstall**, and **Cancel**. It also offers **Open CWNG** when the app is running. Reinstall checks for the latest release, asks whether to retain `.cwng-data`, and preserves internal library files. If you select an internal library, CWNG uses it after reinstalling. Preserved reading progress is tied to the original library, so changing to a different library in the installer requires choosing fresh settings. For installs started from a console, shut down the console instance before reinstalling or uninstalling.
 
-To build the launcher from a Windows checkout, run `powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\windows-build-launcher.ps1`. The build uses Git and the Windows .NET Framework C# compiler. It writes `dist\windows\CWNG.exe`. The EXE embeds application source. The runtime and frontend are provisioned on first launch, and the launcher log is stored in `.cwng-data\windows-launcher.log`.
+For everyday use, run `CWNG.exe` inside the installed folder. It checks for the runtime and required files before starting. Left-click its tray icon to open the home page. Right-click for **Open CWNG**, **Restart**, and **Quit**. Restart opens the home page when the server is ready. Windows passes the URL to your default browser, which controls tab and focus behavior. Run `CWNG.exe --background` to start without opening the browser. Startup, restart, and quit show a progress window, and the launcher log is in `.cwng-data\windows-launcher.log`.
+
+To build from a Windows checkout, run `powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\windows-build-launcher.ps1`. It produces `cwng-installer.exe`, `CWNG.exe`, and `cwng-windows.zip` in `dist\windows`. A new Windows release uses a `windows-v…` tag and publishes `cwng-installer.exe` and `cwng-windows.zip`. The package already contains the app launcher. The installer can also read the verified source payload from the [older combined Windows release](https://github.com/dapih/Calibre-Web-NextGen/releases/tag/windows-v4.1.62).
 
 ## Restarting and stopping
 
@@ -70,13 +72,15 @@ Wait for imports to finish and stop the application before moving it. Move the e
 
 A linked Git worktree also contains Git administrative references outside its folder. Use `git worktree move` when moving the development checkout and preserving Git operations. An application-only copy can run independently of Git; retain `cps`, `scripts`, `.cwng-runtime`, `.cwng-data`, `start-windows.cmd`, `VERSION`, `LICENSE` and `dirs.json`. Keep the full source checkout if you want to update or rebuild it with setup.
 
-To update, stop the application, back up `.cwng-data` and your library, update the source in the installed folder, and rerun `install-windows.cmd`. This applies to installations started from the EXE as well. Setup checks each tool's installed asset receipt and stages replacements before swapping them into `.cwng-runtime`. On its first run, this version of setup refreshes tools installed before receipts were introduced. Existing configuration, ingest data, and libraries stay in place.
+To update an installer-managed copy, run `cwng-installer.exe` and choose **Reinstall**. Choose to retain `.cwng-data` to keep your accounts, reading progress, settings, and pending ingest. For a source checkout, stop the application, back up `.cwng-data` and your library, update the source, and rerun `install-windows.cmd`. Source setup checks the installed tool receipts and stages replacements when pins change.
 
 Python, Calibre and kepubify use the shared version pins from the root `Dockerfile`. When merging an upstream pin change, add the verified SHA-256 for the corresponding Windows artifact to [`scripts/windows-tool-checksums.psd1`](../../scripts/windows-tool-checksums.psd1). Setup reports a missing checksum before touching the runtime. ImageMagick and build-only Node use their own Windows pins.
 
 ### Uninstall on Windows
 
-Folder removal is the uninstall procedure for both the EXE and source installations.
+Run `cwng-installer.exe` and choose **Uninstall**. It asks separately about retaining `.cwng-data` and each detected internal library. Empty default library folders are omitted. Retained files stay inside `CWNG` and are reused on a later install. A clean uninstall removes `CWNG`. The sibling `calibre-library` and other libraries outside `CWNG` remain in place.
+
+For source or older installations, or to remove the folder manually, follow these steps.
 
 1. **Stop CWNG.** Wait for uploads, imports, and conversions to finish. If you used `CWNG.exe`, choose **Quit** in the system tray and wait for its icon to disappear. For a console launch, use Admin **Shutdown** or press Ctrl+C in the console and wait for the launcher to exit. If an import was interrupted, follow the [recovery guidance](#interrupted-imports) before discarding its files.
 2. **Save the data you want to keep.** After shutdown, copy `.cwng-data` to a location outside the app folder to keep settings, accounts, reading progress, pending ingest, and the bundled Calibre settings. Back up or move any library inside the app folder. Copy the whole library folder, including `metadata.db` and the book files. The default sibling `calibre-library` and other external libraries remain at their existing paths. The old profile folders retained by [legacy import](#existing-windows-source-installations) also stay separate.

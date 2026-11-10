@@ -1,0 +1,16 @@
+/* Both panel labels are also present in the original Windows release. */
+.blur section:is([aria-labelledby="create_library_heading"], [aria-labelledby="existing_library_heading"]) {
+    color: #eee;
+    background-color: #202c35;
+    border-color: #45545f;
+}
+
+.blur section:is([aria-labelledby="create_library_heading"], [aria-labelledby="existing_library_heading"]) > .panel-heading {
+    color: inherit;
+    background-color: transparent;
+    border-color: #45545f;
+}
+
+.blur section[aria-labelledby="create_library_heading"] .help-block {
+    color: #c4ced6;
+}

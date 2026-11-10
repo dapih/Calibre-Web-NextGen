@@ -1,3 +1,5 @@
+@import url("library-setup-panels.css");
+
 body.serieslist.grid-view div.container-fluid > div > div.col-sm-10::before {
   display: none;
 }

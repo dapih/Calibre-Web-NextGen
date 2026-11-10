@@ -62,7 +62,12 @@ cps/static/app/
 # Local Windows installation, including private data and libraries.
 /.cwng-runtime/
 /.cwng-data/
+/.cwng-stage-*/
+/.cwng-old-*/
+/CWNG/
 /CWNG.exe
+/cwng-installer.exe
+/cwng-windows.zip
 /dist/windows/
 /library/
 /calibre-library/
