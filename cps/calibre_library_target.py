@@ -14,8 +14,22 @@ import stat
 LibraryTarget = namedtuple("LibraryTarget", "args stdin")
 
 
+def _short_windows_path(path):
+    import ctypes
+    from ctypes import wintypes
+
+    short_path = ctypes.WinDLL("kernel32", use_last_error=True).GetShortPathNameW
+    short_path.argtypes = [wintypes.LPCWSTR, wintypes.LPWSTR, wintypes.DWORD]
+    short_path.restype = wintypes.DWORD
+    buffer = ctypes.create_unicode_buffer(32768)
+    size = short_path(os.fspath(path), buffer, len(buffer))
+    if 0 < size < len(buffer):
+        return buffer.value
+    return None
+
+
 def local_library_path(library_dir):
-    """Give Windows Calibre a short junction, retaining the real path in config.
+    """Give Windows Calibre a short path, retaining the real path in config.
 
     Calibre budgets library roots at 75 characters even on long-path-aware
     Windows. The junction is derived cache state, not a copy of the library.
@@ -29,6 +43,13 @@ def local_library_path(library_dir):
         return value
     if not os.path.isdir(actual):
         raise FileNotFoundError("Calibre library directory does not exist: " + actual)
+    # A DOS short name addresses the real directory directly. Some Windows
+    # installations refuse to create child directories through a junction,
+    # including Calibre's .calnotes and author directories.
+    short = _short_windows_path(actual)
+    if short and len(short) <= 75 and os.path.samefile(short, actual):
+        return short
+
     import _winapi
     cache_root = os.environ.get("LOCALAPPDATA")
     if not cache_root:
@@ -50,15 +71,9 @@ def local_library_path(library_dir):
     result = str(alias)
     if len(result) > 75:
         # A long Windows account name may itself need its existing short form.
-        import ctypes
-        short_path = ctypes.WinDLL("kernel32", use_last_error=True).GetShortPathNameW
-        short_path.argtypes = [ctypes.c_wchar_p, ctypes.c_wchar_p, ctypes.c_uint32]
-        short_path.restype = ctypes.c_uint32
-        buffer = ctypes.create_unicode_buffer(32768)
-        size = short_path(result, buffer, len(buffer))
-        if not size or size >= len(buffer) or len(buffer.value) > 75:
+        result = _short_windows_path(alias)
+        if not result or len(result) > 75:
             raise RuntimeError("Windows user cache path is too long for Calibre")
-        result = buffer.value
     return result
 
 

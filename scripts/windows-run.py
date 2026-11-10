@@ -10,6 +10,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path[:0] = [str(ROOT), str(ROOT / 'scripts')]
 
 from windows_portable import portable_environment
+from windows_tray_control import tray_control
 
 
 def main():
@@ -17,7 +18,8 @@ def main():
         from cps import web_server
         web_server.defer_restart = True
         try:
-            run()
+            with tray_control(web_server):
+                run()
         except SystemExit as error:
             if error.code not in (None, 0):
                 raise

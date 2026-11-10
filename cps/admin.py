@@ -17,6 +17,7 @@ import requests
 from datetime import datetime, timedelta
 from datetime import time as datetime_time
 from functools import wraps
+from pathlib import Path
 from urllib.parse import urlparse
 import shutil  # noqa: F401 -- test/extension monkeypatch compatibility
 import subprocess
@@ -160,7 +161,7 @@ def before_request():
     # oversized shelf-reorder covers) reached users. Single source of truth.
     g.current_theme = 1
     # Safety net: if not configured but metadata.db now exists at default location, auto-set without redirect loop
-    if not config.db_configured:
+    if not config.db_configured and not os.environ.get('CWA_APP_ROOT'):
         try:
             default_metadata = '/calibre-library/metadata.db'
             if (not config.config_calibre_dir or not os.path.isfile(os.path.join(config.config_calibre_dir, 'metadata.db'))) \
@@ -3032,16 +3033,14 @@ def cancel_task():
     return ""
 
 
-def _db_simulate_change():
-    param = request.form.to_dict()
-    to_save = dict()
-    incoming = param.get('config_calibre_dir', config.config_calibre_dir or '')
-    incoming = strip_whitespaces(re.sub(r'[\\/]metadata\.db$', '', incoming, flags=re.IGNORECASE))
-    # Fallback: if nothing provided and default metadata exists, assume /calibre-library
-    if not incoming and os.path.isfile('/calibre-library/metadata.db'):
-        incoming = '/calibre-library'
-    to_save['config_calibre_dir'] = incoming
-    db_valid, db_change = calibre_db.check_valid_db(to_save["config_calibre_dir"],
+def _db_simulate_change(directory=None):
+    if directory is None:
+        incoming = request.form.get('config_calibre_dir', config.config_calibre_dir or '')
+        directory = strip_whitespaces(re.sub(r'[\\/]metadata\.db$', '', incoming, flags=re.IGNORECASE))
+        # Fallback: if nothing provided and default metadata exists, assume /calibre-library
+        if not directory and not os.environ.get('CWA_APP_ROOT') and os.path.isfile('/calibre-library/metadata.db'):
+            directory = '/calibre-library'
+    db_valid, db_change = calibre_db.check_valid_db(directory,
                                                     ub.app_DB_path,
                                                     config.config_calibre_uuid)
     db_change = bool(db_change and config.config_calibre_dir)
@@ -3056,10 +3055,39 @@ def _library_busy_db_configuration_result():
     return _db_configuration_result(_("Library maintenance is running; try again when it finishes."))
 
 
+def _windows_first_library_root():
+    root = os.environ.get("CWA_APP_ROOT") if os.name == "nt" else None
+    if root and not (config.db_configured or config.config_calibre_dir or config.config_calibre_uuid):
+        return Path(root)
+    return None
+
+
 @content_server.configuration_update(on_busy=_library_busy_db_configuration_result)
 def _db_configuration_update_helper():
     db_change = False
     to_save = request.form.to_dict()
+    setup_action = to_save.get("windows_library_action")
+    if setup_action is not None:
+        root = _windows_first_library_root()
+        if request.endpoint != "admin.db_configuration" or setup_action not in ("default", "custom", "existing"):
+            abort(400)
+        if root is None:
+            # A second submission must not switch libraries after setup has finished.
+            if config.db_configured:
+                return redirect(url_for("web.index"), code=303)
+            return _db_configuration_result(_("Check the saved library location in Database Configuration."))
+        from windows_source_library import default_library_path, prepare_library
+
+        location = default_library_path(root) if setup_action == "default" else to_save.get("config_calibre_dir", "").strip()
+        try:
+            directory, _created = prepare_library(root, location, create=setup_action != "existing")
+        except ValueError as error:
+            return _db_configuration_result(_(str(error)))
+        except (OSError, RuntimeError, subprocess.SubprocessError) as error:
+            log.error("Windows library setup failed: %s", error)
+            return _db_configuration_result(_("Calibre could not prepare that library. Check the folder path and permissions."))
+        to_save = {"config_calibre_dir": str(directory)}
+
     gdrive_error = None
     server_before = content_server.configuration_identity()
     if to_save.get("config_calibre_split") == "on" and content_server.setting("config_calibre_server_enabled"):
@@ -3069,20 +3097,23 @@ def _db_configuration_update_helper():
     if incoming is None:
         log.warning("DB config update missing config_calibre_dir; using current config value")
         incoming = config.config_calibre_dir or ''
-    incoming = re.sub(r'[\\/]metadata\.db$', '', incoming, flags=re.IGNORECASE)
-    if not incoming and os.path.isfile('/calibre-library/metadata.db'):
-        incoming = '/calibre-library'
+    if setup_action is None:
+        incoming = re.sub(r'[\\/]metadata\.db$', '', incoming, flags=re.IGNORECASE)
+        if not incoming and not os.environ.get('CWA_APP_ROOT') and os.path.isfile('/calibre-library/metadata.db'):
+            incoming = '/calibre-library'
     to_save['config_calibre_dir'] = incoming
     db_valid = False
     try:
-        db_change, db_valid = _db_simulate_change()
+        db_change, db_valid = _db_simulate_change(incoming) if setup_action is not None else _db_simulate_change()
+        if setup_action is not None and not db_valid:
+            return _db_configuration_result(_("The selected metadata.db could not be opened as a Calibre library."))
 
         # gdrive_error drive setup
         gdrive_error = _configuration_gdrive_helper(to_save)
     except (OperationalError, InvalidRequestError) as e:
         ub.session.rollback()
         log.error_or_exception("Settings Database error: {}".format(e))
-        _db_configuration_result(_("Oops! Database Error: %(error)s.", error=e.orig), gdrive_error)
+        return _db_configuration_result(_("Oops! Database Error: %(error)s.", error=getattr(e, 'orig', e)), gdrive_error)
     try:
         metadata_db = os.path.join(to_save.get('config_calibre_dir', ''), "metadata.db")
         if config.config_use_google_drive and is_gdrive_ready() and not os.path.exists(metadata_db):
@@ -3104,6 +3135,8 @@ def _db_configuration_update_helper():
             return _db_configuration_result(_('DB Location is not Valid, Please Enter Correct Path'), gdrive_error)
         else:
             calibre_db.setup_db(to_save['config_calibre_dir'], ub.app_DB_path)
+        if setup_action is not None and not config.db_configured:
+            return _db_configuration_result(_("CWNG could not connect to the selected Calibre library."))
         config.store_calibre_uuid(calibre_db, db.Library_Id)
         # if db changed -> delete shelfs, delete download books, delete read books, kobo sync...
         if db_change:
@@ -3131,6 +3164,8 @@ def _db_configuration_update_helper():
     config.save()
     if content_server.configuration_identity() != server_before:
         content_server.start()
+    if setup_action is not None:
+        return redirect(url_for("web.index"), code=303)
     return _db_configuration_result(None, gdrive_error)
 
 
@@ -3470,6 +3505,18 @@ def _configuration_result(error_flash=None, reboot=False, warning_flash=None):
 
 
 def _db_configuration_result(error_flash=None, gdrive_error=None):
+    root = _windows_first_library_root()
+    if root is not None:
+        from windows_source_library import default_library_path
+
+        if error_flash:
+            flash(error_flash, category="error")
+        return render_title_template("config_db.html",
+                                     windows_library_default=default_library_path(root),
+                                     windows_library_action=request.form.get("windows_library_action"),
+                                     windows_library_path=request.form.get("config_calibre_dir", ""),
+                                     title=_("Set up your Calibre library"), page="dbconfig")
+
     gdrive_authenticate = not is_gdrive_ready()
     gdrivefolders = []
     if not gdrive_error and config.config_use_google_drive:
@@ -3490,6 +3537,7 @@ def _db_configuration_result(error_flash=None, gdrive_error=None):
 
     return render_title_template("config_db.html",
                                  config=config,
+                                 show_db_troubleshooting=not config.db_configured,
                                  backup_root=constants.config_path("backup"),
                                  library_location_locked=constants.library_location_is_automounted(),
                                  show_authenticate_google_drive=gdrive_authenticate,

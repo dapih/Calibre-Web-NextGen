@@ -9,12 +9,81 @@
   <h2>{{title}}</h2>
   <div style="width: -webkit-fill-available;" class="col-md-10 col-lg-6">
     <div class="settings-container" style="padding-top: 2rem;">
+    {% if windows_library_default %}
+    <p>{{ _('Create a library for CWNG or connect a Calibre library you already have.') }}</p>
+
+    <section aria-labelledby="create_library_heading" class="panel panel-default">
+      <div class="panel-heading">
+        <h3 id="create_library_heading" class="panel-title">{{ _('Create a new library') }}</h3>
+      </div>
+      <div class="panel-body">
+        <p>{{ _('If the folder already contains metadata.db, CWNG will use that library.') }}</p>
+        <form method="POST" action="{{ url_for('admin.db_configuration') }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <p>{{ _('Default location') }} <code>{{ windows_library_default }}</code></p>
+          <button type="submit" name="windows_library_action" value="default" class="btn btn-primary">
+            {{ _('Use default location') }}
+          </button>
+        </form>
+        <hr>
+        <form method="POST" action="{{ url_for('admin.db_configuration') }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <div class="form-group">
+            <label for="new_library_path">{{ _('Custom location') }}</label>
+            <div class="input-group">
+              <input type="text" class="form-control" id="new_library_path" name="config_calibre_dir"
+                     value="{{ windows_library_path if windows_library_action == 'custom' else '' }}"
+                     aria-describedby="new_library_help" required>
+              <span class="input-group-btn">
+                <button type="button" class="btn btn-default" data-toggle="modal" data-target="#fileModal"
+                        data-link="new_library_path" data-folderonly="true" data-newfile="" aria-label="{{ _('Browse for a folder') }}">
+                  <span class="glyphicon glyphicon-folder-open" aria-hidden="true"></span>
+                </button>
+              </span>
+            </div>
+            <p class="help-block" id="new_library_help">{{ _('Choose an empty folder or enter a new folder path. CWNG creates missing folders.') }}</p>
+          </div>
+          <button type="submit" name="windows_library_action" value="custom" class="btn btn-primary">
+            {{ _('Use custom location') }}
+          </button>
+        </form>
+      </div>
+    </section>
+
+    <section aria-labelledby="existing_library_heading" class="panel panel-default">
+      <div class="panel-heading">
+        <h3 id="existing_library_heading" class="panel-title">{{ _('Select an existing library') }}</h3>
+      </div>
+      <div class="panel-body">
+        <form method="POST" action="{{ url_for('admin.db_configuration') }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <div class="form-group">
+            <label for="existing_library_path">{{ _('Folder containing metadata.db') }}</label>
+            <div class="input-group">
+              <input type="text" class="form-control" id="existing_library_path" name="config_calibre_dir"
+                     value="{{ windows_library_path if windows_library_action == 'existing' else '' }}" required>
+              <span class="input-group-btn">
+                <button type="button" class="btn btn-default" data-toggle="modal" data-target="#fileModal"
+                        data-link="existing_library_path" data-filefilter="metadata.db" data-newfile="" aria-label="{{ _('Browse for a library') }}">
+                  <span class="glyphicon glyphicon-folder-open" aria-hidden="true"></span>
+                </button>
+              </span>
+            </div>
+          </div>
+          <button type="submit" name="windows_library_action" value="existing" class="btn btn-primary">
+            {{ _('Use existing library') }}
+          </button>
+        </form>
+      </div>
+    </section>
+    {% else %}
     <!-- The DB-config form and the Restore form further down are SIBLINGS,
          never nested. HTML5 forbids nested <form>: the parser drops the inner
          <form> tag and re-parents its button onto the outer form, so the
          button silently submits to the outer action. See CWA #1444. -->
     <form role="form" method="POST" action="{{ url_for('admin.db_configuration') }}" autocomplete="off">
 
+      {% if show_db_troubleshooting|default(true) %}
       <h2 style="margin-bottom: 3rem;">{{ _('Troubleshooting your DB') }}</h2>
       <p>{{ _('If you have been sent to this page after updating or migrating, there was a problem mounting your Calibre Database (metadata.db), or less likely, a problem with your app.db.') }}</p>
       <p>{{ _('Common causes include:') }}</p>
@@ -38,6 +107,7 @@
       <p>{{ _('You can also use Last Resort Restore at the bottom of this page to try rebuilding your Calibre Database from the OPF files in your library.') }}</p>
 
       <hr style="margin: 3rem 0;">
+      {% endif %}
 
        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
        <label style="font-size: 30px; margin-bottom: 3rem; line-height: 1.22; margin-top: 2rem; color: white;" for="config_calibre_dir">{{_('Location of Calibre Database (metadata.db file)')}}</label>
@@ -130,12 +200,14 @@
         <button type="submit" class="btn btn-danger" data-confirm="{{ _('Are you sure? This cannot be undone.') }}" onclick="return confirm(this.dataset.confirm);">{{ _('Restore Calibre Database (Last Resort)') }}</button>
       </form>
     </div>
+    {% endif %}
     </div>
   </div>
 </div>
 {% endblock %}
 {% block modal %}
 {{ filechooser_modal() }}
+{% if not windows_library_default %}
 {{ change_confirm_modal() }}
 <div id="InvalidDialog" class="modal fade" role="dialog">
   <div class="modal-dialog modal-sm">
@@ -150,4 +222,5 @@
     </div>
   </div>
 </div>
+{% endif %}
 {% endblock %}

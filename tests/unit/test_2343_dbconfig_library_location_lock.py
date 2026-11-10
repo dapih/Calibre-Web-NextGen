@@ -8,7 +8,7 @@ every boot and would replace anything typed there. Without that unit (bare
 metal, Windows) or with it switched off (DISABLE_LIBRARY_AUTOMOUNT), the field
 is the only way to set the location.
 """
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from types import SimpleNamespace
 
 import jinja2
@@ -16,6 +16,7 @@ import pytest
 from lxml import html
 
 from cps import constants
+from scripts.windows_source_library import default_library_path
 
 pytestmark = pytest.mark.unit
 
@@ -70,6 +71,28 @@ def test_the_container_keeps_the_location_owned_by_auto_library():
     assert picker.get("disabled") is not None
     assert split_picker.get("disabled") is None
     assert "docker-compose" in document.text_content()
+
+
+def test_first_run_offers_three_library_actions_without_recovery_controls():
+    default = str(default_library_path(PureWindowsPath(r"C:\Books\CWNG")))
+    assert default == r"C:\Books\calibre-library"
+    document = html.fromstring(_render_dbconfig(windows_library_default=default))
+    assert default in document.text_content()
+    assert "Troubleshooting your DB" not in document.text_content()
+    assert "Restore Calibre Database" not in document.text_content()
+
+    actions = {}
+    for form in document.forms:
+        assert form.action == "/admin.db_configuration"
+        assert form.method == "POST"
+        assert form.fields["csrf_token"] == "token"
+        [action] = form.xpath('.//button[@name="windows_library_action"]')
+        actions[action.get("value")] = form
+
+    assert list(actions) == ["default", "custom", "existing"]
+    assert "config_calibre_dir" not in actions["default"].fields
+    assert actions["custom"].xpath('.//button[@data-link="new_library_path"]/@data-folderonly') == ["true"]
+    assert actions["existing"].xpath('.//button[@data-link="existing_library_path"]/@data-filefilter') == ["metadata.db"]
 
 
 @pytest.mark.parametrize("unit_installed, flag, locked", [

@@ -84,6 +84,7 @@ Prefer separate pages with a sidebar? The same guides are on the searchable [doc
 - [What's included](#whats-included)
 - [Quick start](#quick-start)
   - [Windows portable source installation](#windows-portable-source-installation)
+    - [Uninstall on Windows](#uninstall-on-windows)
   - [Docker Compose](#docker-compose)
 - [Full Docker Compose setup](#full-docker-compose-setup)
   - [What goes in each volume](#what-goes-in-each-volume)
@@ -145,18 +146,28 @@ Choose the [Windows source installation](#windows-portable-source-installation) 
 
 Use Windows x64 and a writable folder. Setup needs internet access; it downloads the runtime and tools locally without Docker, WSL, a global Python/Calibre installation or a system PATH change.
 
+For one-click setup, [build `CWNG.exe` from the source](docs/install/windows-source.md#single-executable-launcher) and double-click it in a writable folder. It creates a `CWNG` folder beside the executable and opens the app in your default browser. Use the copy inside `CWNG` for everyday use. Its system tray menu offers **Open CWNG**, **Restart**, and **Quit**.
+
+#### Install from source
+
 1. Clone or download this repository into a writable folder, then run [`install-windows.cmd`](install-windows.cmd). If you develop the app as well, use a separate source copy for the installation you run.
 2. Run [`start-windows.cmd`](start-windows.cmd) and open [http://127.0.0.1:8083](http://127.0.0.1:8083).
-3. Sign in as `admin` / `admin123`. On the Database Configuration page, select an existing Calibre library containing `metadata.db`. To create an empty library, run [`create-windows-library.cmd`](create-windows-library.cmd) and select the directory it prints; the default is `.cwng-data\library`. The helper refuses to replace an existing library or use a nonempty folder.
-4. Change the admin password. Put copies of books in `.cwng-data\ingest` and wait for import/conversion to finish before checking the library. Ingest files are processed and removed; keep your originals elsewhere.
+3. Sign in as `admin` / `admin123`. On **Set up your Calibre library**, create a library in `calibre-library` beside the installation folder or choose a custom folder. CWNG creates missing folders and uses the existing library if the chosen folder already contains `metadata.db`. **Select an existing library** accepts a folder or its `metadata.db` file. If a previously configured library fails to open, **Database Configuration** shows troubleshooting guidance.
+4. Change the admin password. Put copies of books in `.cwng-data\ingest` and wait for import and conversion to finish. Keep your originals elsewhere because CWNG removes ingest files after processing.
 
-The tracked source includes `cps/`, `scripts/` and `frontend/`. Setup creates the replaceable tools in `.cwng-runtime/` and generates the browser bundle in `cps/static/app/`. Keep settings, accounts and ingest in `.cwng-data/` and keep book libraries outside the runtime. Git ignores these local outputs and a root-level `library/`. Deep library roots use short directory junctions without drive letters. Saved library paths stay real.
+The tracked source includes `cps/`, `scripts/` and `frontend/`. Setup installs stripped standalone Python and the bundled tools in `.cwng-runtime/` and builds the browser interface in `cps/static/app/`. Settings, accounts, and the default ingest folder live in `.cwng-data/`. Git ignores these local outputs and the root-level `calibre-library/` and `library/` folders used by older or custom installations. Deep library paths use short Windows names when available, with directory junctions as a fallback. Settings retain the actual library path.
 
-**Restart or stop:** Wait for imports/conversions to finish, open the [Admin page](http://127.0.0.1:8083/admin/view), then choose **Restart** or **Shutdown** near the bottom and confirm. Restart waits for the Windows workers to finish before relaunching. After Shutdown, run `start-windows.cmd` to start again. Closing the browser leaves the app running.
+To restart or stop, wait for imports and conversions to finish, then use the tray menu or choose **Restart** or **Shutdown** on the [Admin page](http://127.0.0.1:8083/admin/view). Closing the browser leaves the app running.
 
-**Move the installation:** Stop the app, then move the whole folder, including `.cwng-runtime`, `.cwng-data` and any library inside it. Run `start-windows.cmd` at the destination; internal paths are adjusted automatically. Selected external libraries keep their configured locations.
+To move the installation, stop the app and move the whole folder. Run the installed `CWNG.exe` or `start-windows.cmd` at the destination. CWNG adjusts paths that pointed inside the app folder. If you also move the sibling `calibre-library` or another external library, select its new path in **Database Configuration**.
 
-For an older Windows profile installation, use the explicit legacy-copy procedure in the [Windows guide](docs/install/windows-source.md#existing-windows-source-installations). The guide also covers [updates and removal](docs/install/windows-source.md#moving-updating-and-removal), [path limits](docs/install/windows-source.md#long-windows-library-paths) and [interrupted imports](docs/install/windows-source.md#interrupted-imports).
+The Windows guide covers [copying legacy profile data](docs/install/windows-source.md#existing-windows-source-installations), [updates](docs/install/windows-source.md#moving-updating-and-removal), [path limits](docs/install/windows-source.md#long-windows-library-paths), and [interrupted imports](docs/install/windows-source.md#interrupted-imports).
+
+#### Uninstall on Windows
+
+1. Wait for active imports and conversions. Choose **Quit** from the system tray, or use **Shutdown** on the Admin page or Ctrl+C for a console launch. Wait for the tray icon to disappear or for the launcher to exit.
+2. Back up `.cwng-data` outside the installation if you want to keep settings, accounts, reading progress, or pending ingest files. Back up or move any library stored inside `CWNG`, including `metadata.db` and all book folders. The default sibling `calibre-library` and other external libraries stay in place.
+3. Delete the stopped `CWNG` folder and, if desired, the separate setup copy of `CWNG.exe` and any shortcuts you created. If you run CWNG from a checkout you want to keep, see the [Windows uninstall guide](docs/install/windows-source.md#uninstall-on-windows) for which local files to remove and how to clean up optional long-path junctions safely.
 
 ### Docker Compose
 

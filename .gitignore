@@ -331,4 +331,6 @@ wiki-generated/
 # Windows installation artifacts and private local data.
 /.cwng-runtime/
 /.cwng-data/
+/CWNG.exe
 /library/
+/calibre-library/

@@ -4,17 +4,27 @@ Run the existing application on Windows x64 without Docker, WSL or a global Pyth
 
 1. Put the source in a writable folder and run `install-windows.cmd`.
 2. Run `start-windows.cmd` and open the displayed local address.
-3. Select an existing Calibre library on the Database Configuration page. To create an empty library, run `create-windows-library.cmd`; its default is `.cwng-data\library`. You can also pass a folder, for example `create-windows-library.cmd "D:\Books\My Library"`. Select the printed directory on the configuration page. The helper refuses to replace an existing library or use a nonempty folder.
+3. Sign in and choose an option on **Set up your Calibre library**.
+   - **Create a new library** uses the default `calibre-library` folder beside the CWNG installation or a custom path you enter or browse to. For example, `C:\Books\CWNG` uses `C:\Books\calibre-library` by default. CWNG creates missing folders. If the destination already contains `metadata.db`, CWNG connects that library. If it contains other files but no `metadata.db`, choose an empty or new folder.
+   - **Select an existing library** accepts the library folder or its `metadata.db` file.
 
 The existing first-run login is `admin` / `admin123`. Change that password before allowing network access. The launcher listens on the local computer by default. `start-windows.cmd -ListenAddress 0.0.0.0` allows network access when intended.
 
-Until a library is configured, browser login uses the classic login and database configuration pages. After configuration, the new web interface is the default.
+After setup, CWNG opens the main web interface. If a library that was previously configured cannot be opened, **Database Configuration** shows troubleshooting guidance.
+
+## Single executable launcher
+
+Put `CWNG.exe` in a writable folder and double-click it. The first launch creates a `CWNG` folder beside it, downloads the pinned tools, builds the browser interface and opens the app in your default browser. For later use and for moves, use the copy of `CWNG.exe` inside the installed folder. To use an existing Windows source installation and its data, place the EXE beside `start-windows.cmd` in the updated checkout.
+
+While CWNG runs, double-click its system tray icon to open the browser. Right-click for **Open CWNG**, **Restart**, and **Quit**. Your default browser decides whether to reuse a tab. Restart and Quit wait for the server to stop before relaunching it or closing the tray. Windows may initially place the icon under the overflow arrow. Run `CWNG.exe --background` to start in the tray and open the browser later.
+
+To build the launcher from a Windows checkout, run `powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\windows-build-launcher.ps1`. The build uses Git and the Windows .NET Framework C# compiler. It writes `dist\windows\CWNG.exe`. The EXE embeds application source. The runtime and frontend are provisioned on first launch, and the launcher log is stored in `.cwng-data\windows-launcher.log`.
 
 ## Restarting and stopping
 
-Wait for uploads/conversions to finish, then open `http://127.0.0.1:8083/admin/view` as an administrator. Near the bottom, choose **Restart** or **Shutdown** and confirm. Restart waits for the Windows background workers and instance lock to finish before the launcher starts a replacement with the same isolated Python and UTF-8 options. Refresh the browser when it is ready. Legacy data copying runs only on the first launch, not on each restart.
+Wait for uploads, imports, and conversions to finish. From the tray, choose **Restart** or **Quit**. You can also open `http://127.0.0.1:8083/admin/view` as an administrator and choose **Restart** or **Shutdown** near the bottom. Restart waits for the Windows background workers and instance lock to finish before starting a replacement with the same isolated Python and UTF-8 options.
 
-After Shutdown, run `start-windows.cmd` to start again. If you started it in a visible console, Ctrl+C also stops it. Closing the browser leaves the application running.
+After shutdown, open the installed `CWNG.exe` or run `start-windows.cmd` to start again. For a console launch, Ctrl+C also stops the app. Closing the browser leaves the application running.
 
 ## Where files live
 
@@ -26,19 +36,19 @@ After Shutdown, run `start-windows.cmd` to start again. If you started it in a v
 | `.cwng-data/config/` | Local data | Application databases, keys, logs, recovery markers and conversion scratch space |
 | `.cwng-data/ingest/` | Local data | Default ingest folder shown at launch |
 | `.cwng-data/calibre-config/` | Local data | Settings for the included Calibre tools |
-| `.cwng-data/library/` | Local data | Default location for a library made by the creation helper |
+| `../calibre-library/` | Local data | Default location for a new Calibre library, beside the installation |
 | `.cwng-data/location.json` | Local data | Previous application location, used to update internal paths after a move |
-| `library/` or a selected path | Local data | An existing library can stay at its current location |
+| `library/`, `.cwng-data/library/`, or a selected path | Local data | An existing library can stay at its current location |
 
-Git tracks the source and setup recipes. It ignores generated browser assets, the installed runtime, local data and a root-level `library/`. Setup downloads the pinned tools and installs the application's Python dependencies. Configuration can contain credentials, and libraries contain personal files. Keep libraries outside `.cwng-runtime/` so setup can safely replace tools. To keep development files separate from the instance you use, run setup from a dedicated copy of the source.
+Git tracks the source and setup recipes. It ignores generated browser assets, the installed runtime, local data, the launcher binary, and the root-level `calibre-library/` and `library/` folders used by older or custom installations. Configuration can contain credentials, and libraries contain personal files. Keep libraries outside `.cwng-runtime/` so setup can safely replace tools. To keep development files separate from the instance you use, run setup from a dedicated copy of the source.
 
 The runtime uses its own Python directly, without a virtual environment or an editable source installation. Setup removes the Python build metadata and frontend/Node build directories it creates. Pre-existing developer directories remain.
 
 ## Long Windows library paths
 
-The Windows integration gives Calibre a short directory junction when the real library path exceeds 75 characters. These aliases are cached under `%LOCALAPPDATA%\CWNG-Paths`; they point to the actual folders and contain no book copies or application configuration. The web interface and saved settings retain the real library location. Aliases are derived from the current location and recreated as needed after a move. No drive letter or system-wide setting is needed.
+When the real library path exceeds 75 characters, the Windows integration first checks whether Windows provides a short name that fits Calibre's limit. This lets Calibre create notes and book directories directly in the library. Otherwise it uses a short junction under `%LOCALAPPDATA%\CWNG-Paths`. The web interface and saved settings retain the real library location. Windows resolves the short name or junction again after a move.
 
-Use `create-windows-library.cmd` to create a library in a deep folder. The bundled Calibre programs remain unchanged, so opening them directly outside this integration still uses Calibre's own path checks. Ordinary Windows filesystem/component limits still apply. An unusually long Windows user-cache path also needs an available Windows short name; the adapter reports an error if it cannot obtain a short enough cache path.
+You can also create an empty library from the command line with `create-windows-library.cmd "D:\Books\My Library"`. With no path, the command uses `calibre-library` beside the CWNG installation. On systems that reject creating directories through junctions, choose a shorter library path if Windows cannot supply a short enough direct name. The bundled Calibre programs still apply their own path checks when opened directly.
 
 ## Existing Windows source installations
 
@@ -56,16 +66,42 @@ If copying fails, the original folders remain. If local config/ingest folders al
 
 ## Moving, updating and removal
 
-Stop the application and wait for imports to finish before moving it. Move the entire application folder, including `.cwng-runtime`, `.cwng-data` and any library inside it, then run `start-windows.cmd` from the new location. Moving an installed folder requires only the launcher. The launcher updates known filesystem settings that pointed inside the old application folder, including an internal library and tool paths. Libraries stored elsewhere must still be available at their configured paths. Windows Calibre aliases are regenerated from the destination path.
+Wait for imports to finish and stop the application before moving it. Move the entire application folder, including `.cwng-runtime`, `.cwng-data`, and any library inside it, then open the installed `CWNG.exe` or run `start-windows.cmd` from the new location. The launcher updates known filesystem settings that pointed inside the old application folder, including an internal library and tool paths. External libraries, including the default sibling folder, keep their saved paths. If you also move one of those libraries, select its new location in **Database Configuration**. Windows Calibre aliases are regenerated from the destination path.
 
 A linked Git worktree also contains Git administrative references outside its folder. Use `git worktree move` when moving the development checkout and preserving Git operations. An application-only copy can run independently of Git; retain `cps`, `scripts`, `.cwng-runtime`, `.cwng-data`, `start-windows.cmd`, `VERSION`, `LICENSE` and `dirs.json`. Keep the full source checkout if you want to update or rebuild it with setup.
 
-To update, stop the application, back up `.cwng-data` and your library, update the source and rerun `install-windows.cmd`. Setup checks the installed asset receipt for each tool and stages replacements before swapping them into `.cwng-runtime`. The first run with this setup refreshes tools installed before receipts were introduced. Existing configuration, ingest data and libraries stay in place.
+To update, stop the application, back up `.cwng-data` and your library, update the source in the installed folder, and rerun `install-windows.cmd`. This applies to installations started from the EXE as well. Setup checks each tool's installed asset receipt and stages replacements before swapping them into `.cwng-runtime`. On its first run, this version of setup refreshes tools installed before receipts were introduced. Existing configuration, ingest data, and libraries stay in place.
 
 Python, Calibre and kepubify use the shared version pins from the root `Dockerfile`. When merging an upstream pin change, add the verified SHA-256 for the corresponding Windows artifact to [`scripts/windows-tool-checksums.psd1`](../../scripts/windows-tool-checksums.psd1). Setup reports a missing checksum before touching the runtime. ImageMagick and build-only Node use their own Windows pins.
 
-To remove the installation, stop it and delete its folder. Back up or move any config, pending ingest and libraries stored inside it first.
+### Uninstall on Windows
+
+Folder removal is the uninstall procedure for both the EXE and source installations.
+
+1. **Stop CWNG.** Wait for uploads, imports, and conversions to finish. If you used `CWNG.exe`, choose **Quit** in the system tray and wait for its icon to disappear. For a console launch, use Admin **Shutdown** or press Ctrl+C in the console and wait for the launcher to exit. If an import was interrupted, follow the [recovery guidance](#interrupted-imports) before discarding its files.
+2. **Save the data you want to keep.** After shutdown, copy `.cwng-data` to a location outside the app folder to keep settings, accounts, reading progress, pending ingest, and the bundled Calibre settings. Back up or move any library inside the app folder. Copy the whole library folder, including `metadata.db` and the book files. The default sibling `calibre-library` and other external libraries remain at their existing paths. The old profile folders retained by [legacy import](#existing-windows-source-installations) also stay separate.
+3. **Remove the installation.** Delete the stopped `CWNG` folder, or the folder you used for a dedicated source installation. If you want to keep the source checkout, remove `.cwng-runtime`, `cps\static\app`, and `.cwng-data` from that checkout after saving the data you want. You can also remove a local `CWNG.exe`, the separate setup executable, and any shortcuts you created. If Windows reports that the folder is in use, verify that CWNG and its import workers have exited and close terminals or editors using the folder before retrying.
+
+#### Optional long-path cache cleanup
+
+An installation that needed a long-path fallback can leave junctions in `%LOCALAPPDATA%\CWNG-Paths`. Other CWNG installations can share this cache. You can leave it in place. To clean it up, list the junctions and check each `Target` before choosing a junction used only by the installation you removed.
+
+```powershell
+$cache = Join-Path $env:LOCALAPPDATA 'CWNG-Paths'
+Get-ChildItem -LiteralPath $cache -Directory -Force |
+    Where-Object LinkType -eq 'Junction' |
+    Select-Object Name, Target
+```
+
+Replace `<junction-name>` with the verified name from the list. This deletes only the junction entry and leaves its target library in place.
+
+```powershell
+$alias = Get-Item -LiteralPath (Join-Path $cache '<junction-name>') -Force
+if ($alias.LinkType -eq 'Junction') { $alias.Delete() }
+```
 
 ## Interrupted imports
+
+Book ingest is an upstream feature. The [Docker setup](../../docker-compose.yml) uses the container inbox `/cwa-book-ingest`. The Windows launcher sets `.cwng-data\ingest` as its portable default and uses the existing ingest processor.
 
 The Windows worker imports stable files after a library has been configured. A failed or interrupted import stops the worker and leaves `unfinished-ingest.json` in `.cwng-data\config`; the original and working copy are retained. Check `background-ingest.log` and the library before deciding whether to retry. After resolving the interrupted import, remove the marker to resume. After a forced stop, make sure the import process has ended before restarting. Configuration and ingest paths in the recovery marker are adjusted when their parent installation moves.

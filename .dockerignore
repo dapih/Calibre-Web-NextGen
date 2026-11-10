@@ -62,7 +62,10 @@ cps/static/app/
 # Local Windows installation, including private data and libraries.
 /.cwng-runtime/
 /.cwng-data/
+/CWNG.exe
+/dist/windows/
 /library/
+/calibre-library/
 
 # Runtime state must never be baked into the image. A developer who mounts
 # /config at the repo root (the documented local-dev setup) otherwise ships

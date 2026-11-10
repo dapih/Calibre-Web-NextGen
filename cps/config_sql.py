@@ -386,8 +386,9 @@ class ConfigSQL(object):
 
         change = False
 
-        # Fallback auto-detect: if calibre library not configured but default metadata.db exists, set it
-        if (not self.config_calibre_dir or not os.path.isfile(os.path.join(self.config_calibre_dir, 'metadata.db'))):
+        # The container fallback must not select a library for portable Windows installs.
+        if not os.environ.get('CWA_APP_ROOT') and (
+                not self.config_calibre_dir or not os.path.isfile(os.path.join(self.config_calibre_dir, 'metadata.db'))):
             fallback_db = '/calibre-library/metadata.db'
             if os.path.isfile(fallback_db):
                 detected_dir = os.path.dirname(fallback_db)

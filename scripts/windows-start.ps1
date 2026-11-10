@@ -1,7 +1,8 @@
 # Run the application with its movable, app-local Python runtime and data.
 param(
     [string]$ListenAddress = '127.0.0.1',
-    [switch]$ImportLegacyData
+    [switch]$ImportLegacyData,
+    [switch]$TrayManaged
 )
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
@@ -33,7 +34,8 @@ try {
         }
         & $python -I -X utf8 @launchArgs
         $appExitCode = $LASTEXITCODE
-    } while ($appExitCode -eq 75) # Requested restart after Windows cleanup.
+    } while (-not $TrayManaged -and $appExitCode -eq 75) # Requested restart after Windows cleanup.
+    if ($TrayManaged) { exit $appExitCode }
     if ($appExitCode -ne 0) { throw 'The application stopped with an error. See the message above.' }
 } finally {
     $env:PATH = $savedPath

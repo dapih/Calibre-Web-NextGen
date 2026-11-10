@@ -1330,8 +1330,8 @@ class CalibreDB:
                                          poolclass=StaticPool)
             event.listen(check_engine, "connect", _register_sqlite_udfs)
             with check_engine.begin() as connection:
-                connection.execute(text("attach database '{}' as calibre;".format(dbpath)))
-                connection.execute(text("attach database '{}' as app_settings;".format(app_db_path)))
+                connection.execute(text("ATTACH DATABASE :path AS calibre"), {"path": dbpath})
+                connection.execute(text("ATTACH DATABASE :path AS app_settings"), {"path": app_db_path})
                 # Try enabling WAL to improve concurrency unless running on a network share
                 # Controlled by env var NETWORK_SHARE_MODE (default False)
                 try:
@@ -1518,8 +1518,8 @@ class CalibreDB:
                                                poolclass=StaticPool)
                     event.listen(cls.engine, "connect", _register_sqlite_udfs)
                     with cls.engine.begin() as connection:
-                        connection.execute(text("attach database '{}' as calibre;".format(dbpath)))
-                        connection.execute(text("attach database '{}' as app_settings;".format(app_db_path)))
+                        connection.execute(text("ATTACH DATABASE :path AS calibre"), {"path": dbpath})
+                        connection.execute(text("ATTACH DATABASE :path AS app_settings"), {"path": app_db_path})
                         # Try enabling WAL to improve concurrency unless running on a network share
                         # Controlled by env var NETWORK_SHARE_MODE (default False)
                         try:
