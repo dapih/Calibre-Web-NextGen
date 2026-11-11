@@ -33,7 +33,16 @@ function Start-And-Check {
     $python = Join-Path $InstallRoot '.cwng-runtime\python\python.exe'
     $version = (Get-Content -LiteralPath (Join-Path $InstallRoot 'VERSION') -Raw).Trim()
     if (Test-Path -LiteralPath $address) { Remove-Item -LiteralPath $address }
-    $process = Start-Process -FilePath (Join-Path $InstallRoot 'CWNG.exe') -ArgumentList '--background' -WindowStyle Hidden -PassThru
+    $listener = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, 0)
+    $listener.Start()
+    try { $port = $listener.LocalEndpoint.Port } finally { $listener.Stop() }
+    $savedPort = $env:CWA_PORT_OVERRIDE
+    try {
+        $env:CWA_PORT_OVERRIDE = [string]$port
+        $process = Start-Process -FilePath (Join-Path $InstallRoot 'CWNG.exe') -ArgumentList '--background' -WindowStyle Hidden -PassThru
+    } finally {
+        $env:CWA_PORT_OVERRIDE = $savedPort
+    }
     try {
         $deadline = [DateTime]::UtcNow.AddMinutes(2)
         $ready = $false
