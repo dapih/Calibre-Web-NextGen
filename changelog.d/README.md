@@ -1,5 +1,19 @@
 # Changelog fragments
 
+## Windows release fragments
+
+For changes that users will notice in the Windows distribution, add a Markdown
+fragment under [`windows/`](windows/), for example
+`changelog.d/windows/installer-download.md`. Use the categories and
+symptom-first format below. The app changelog assembler reads direct children
+of `changelog.d/` and skips this subdirectory.
+
+Use the pending Windows entries in the GitHub draft release notes. Once the
+release is published, move its entries into the [Windows release history](../changelogs/windows.md)
+under the published tag and date, then remove the consumed fragments.
+
+## Upstream application fragments
+
 Every pull request that changes shipping code or assets records its release-note
 entry in a separate Markdown file under this directory. That keeps concurrent
 branches away from the shared `CHANGELOG.md` insertion point.
@@ -47,7 +61,7 @@ LC_ALL=C LANG=C python3 scripts/assemble_changelog.py \
   --version vX.Y.Z --date YYYY-MM-DD
 ```
 
-That command moves the current `[Unreleased]` entries and every fragment into a
+That command moves the current `[Unreleased]` entries and every direct fragment into a
 single dated version section, leaves `[Unreleased]` empty, and deletes consumed
 fragments. Files are read in C-locale filename order and entries are grouped in
 the category order above, so repeated runs produce the same bytes. Afterward,

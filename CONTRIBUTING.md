@@ -2,6 +2,11 @@
 
 Bug reports, fixes, translations, and small features welcome.
 
+For the Windows fork, use the [fork issue workflow](docs/agents/issue-tracker.md),
+the [Windows maintainer instructions](docs/install/windows-source.md#building-and-publishing-windows-releases),
+and the [Windows changelog instructions](changelog.d/README.md#windows-release-fragments).
+The contribution and CI instructions below describe the upstream CWNG project.
+
 ## Reporting a bug
 
 [Open a bug report](https://github.com/new-usemame/Calibre-Web-NextGen/issues/new?template=bug_report.yml). The form asks for the version, how you run it, where it happens, your browser or device, and the container logs. Only the description and the version are required. If you reach the app through a reverse proxy or a URL prefix, say so under Anything else.

@@ -118,7 +118,9 @@ Prefer separate pages with a sidebar? The same guides are on the searchable [doc
 
 ## Why this fork exists
 
-This fork makes the existing CWNG application run on Windows x64 with its own Python, Calibre and supporting tools. Configuration and the default ingest folder stay with the installation, so a stopped installation can move without running setup again. Existing application features come from upstream CWNG.
+The direct upstream is `new-usemame/Calibre-Web-NextGen`. It supplies the web library, reader, ingest, and device sync. This fork adds a native Windows x64 installer, an app-local Python and Calibre runtime, a tray launcher, and a portable data layout. Configuration and the default ingest folder travel with the stopped installation, and external Calibre libraries keep their saved paths. [Windows installation guide](docs/install/windows-source.md)
+
+The fork publishes Windows installer and ZIP assets under `cwng-windows-vX.Y.Z-rN` tags. The Windows revision `rN` can advance while the upstream application version stays the same. [Windows release history](changelogs/windows.md)
 
 The Docker instructions below use upstream CWNG's image. Its data format and configuration match upstream CWA, so switching those images is reversible and needs no migration in either direction.
 
@@ -761,6 +763,8 @@ Search the [issue tracker](https://github.com/new-usemame/Calibre-Web-NextGen/is
 ---
 
 ## Differences from upstream
+
+This comparison describes the upstream CWNG application's differences from Calibre-Web-Automated (CWA). For the Windows fork's changes to upstream CWNG, see [Why this fork exists](#why-this-fork-exists).
 
 CWA v4.0.7 and v4.0.8 (September 2026) include many of the fixes that used to be listed here. Checked against CWA v4.0.8 in October 2026, these behaviors the two builds share still differ:
 

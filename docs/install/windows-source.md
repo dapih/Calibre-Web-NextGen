@@ -123,4 +123,4 @@ Run [**Windows package**](https://github.com/dapih/Calibre-Web-NextGen/actions/w
 - `cwng-windows-vX.Y.Z-rN-installer.exe`
 - `cwng-windows-vX.Y.Z-rN.zip`
 
-Review the draft title, filenames, and notes, then publish it on GitHub. GitHub locks the assets after publication. [v4.1.66-r2](https://github.com/dapih/Calibre-Web-NextGen/releases/tag/cwng-windows-v4.1.66-r2) introduced the versioned filenames and was published before the ZIP cleanup.
+Use the pending Windows changelog entries to write the draft notes. Review the title, filenames, and notes, then publish the draft on GitHub. GitHub locks the assets after publication. Archive the entries under the published tag and date. [Windows changelog instructions](../../changelog.d/README.md#windows-release-fragments)
