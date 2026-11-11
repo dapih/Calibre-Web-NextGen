@@ -12,6 +12,8 @@ using System.Windows.Forms;
 internal static class WindowsInstallation
 {
     internal const string InstallerUrl = "https://github.com/dapih/Calibre-Web-NextGen/releases";
+    internal const string InstalledReceipt = ".cwng-installed";
+    internal const string UpdateHelper = @"scripts\cwng-updater.exe";
 
     internal static readonly string[] RequiredFiles = {
         "VERSION", @"cps\main.py", @"scripts\windows-start.ps1", @"scripts\windows-run.py",

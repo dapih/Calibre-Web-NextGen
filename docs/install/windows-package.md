@@ -12,6 +12,8 @@ To reopen the app in your browser, choose **Open CWNG** from the system tray. Wa
 
 ## Update or remove CWNG
 
+If CWNG notifies you about an update, choose **Update to v…** from the tray menu. CWNG verifies the download and restarts with your current settings and library.
+
 Run the Windows installer from the folder that contains `CWNG` and choose **Reinstall** or **Uninstall**. During reinstall, choose to retain `.cwng-data` to keep your accounts, settings, reading progress, and pending imports. Keep a copy of any library you want to retain.
 
 For details on updating, moving an installation, or recovering an interrupted import, see the [Windows installation guide](https://github.com/dapih/Calibre-Web-NextGen/blob/main/docs/install/windows-source.md).

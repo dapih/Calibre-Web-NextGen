@@ -11,7 +11,6 @@ using System.Reflection;
 using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Web.Script.Serialization;
 using System.Windows.Forms;
 
 internal static class WindowsInstaller
@@ -19,8 +18,6 @@ internal static class WindowsInstaller
     private const string Title = "CWNG Installer";
     private const string Data = ".cwng-data";
     private const string Retained = ".cwng-retained";
-    private const string Installed = ".cwng-installed";
-    private const string ReleaseApi = "https://api.github.com/repos/dapih/Calibre-Web-NextGen/releases?per_page=100";
 
     private sealed class RecoveryRequired : IOException
     {
@@ -28,12 +25,17 @@ internal static class WindowsInstaller
     }
 
     [STAThread]
-    private static void Main()
+    private static void Main(string[] args)
     {
         try
         {
             WindowsInstallation.EnableLongPaths();
             Application.EnableVisualStyles();
+            if (args.Length > 0 && args[0] == "--update")
+            {
+                UpdateFromTray(args);
+                return;
+            }
             string parent = Path.GetDirectoryName(Application.ExecutablePath);
             if (Path.GetFileName(parent).Equals("CWNG", StringComparison.OrdinalIgnoreCase) && HasSource(parent))
                 throw new IOException("Move the Windows installer to the folder that contains CWNG before running it.");
@@ -86,30 +88,55 @@ internal static class WindowsInstaller
                 if (!uninstall && choice == DialogResult.Yes) selectedLibrary = library;
             }
 
-            using (var window = new WindowsProgress(Title, true))
-            {
-                Exception failure = null;
-                window.Shown += async (sender, args) =>
-                {
-                    var progress = new Progress<string>(message => { if (!window.IsDisposed) window.Report(message); });
-                    try
-                    {
-                        await Task.Run(() => ChangeInstallation(root, uninstall, keepData, selectedLibrary,
-                            libraries, keptLibraries, progress));
-                    }
-                    catch (Exception error) { failure = error; }
-                    finally { window.Finish(); }
-                };
-                window.SetMessage(uninstall ? "Preparing to uninstall CWNG…" : "Preparing the installation…");
-                Application.Run(window);
-                if (failure != null) throw failure;
-            }
+            ApplyInstallation(root, uninstall, keepData, selectedLibrary, libraries, keptLibraries);
             if (!uninstall) Open(root);
         }
         catch (Exception error)
         {
             MessageBox.Show(error.Message, Title, MessageBoxButtons.OK, MessageBoxIcon.Error);
             Environment.ExitCode = 1;
+        }
+    }
+
+    private static void UpdateFromTray(string[] args)
+    {
+        int launcherId;
+        if (args.Length != 4 || !Path.IsPathRooted(args[1]) || WindowsReleases.ParseTag(args[2]) == null ||
+            !int.TryParse(args[3], out launcherId) || launcherId <= 0)
+            throw new IOException("Choose Update from the CWNG tray menu.");
+
+        string root = Path.GetFullPath(args[1]);
+        if (Inside(Application.ExecutablePath, root))
+            throw new IOException("The updater must run outside the CWNG folder.");
+
+        Process launcher = null;
+        try { launcher = Process.GetProcessById(launcherId); }
+        catch (ArgumentException) { }
+        using (launcher)
+            ApplyInstallation(root, false, true, null, null, null, args[2], launcher);
+        Open(root, true);
+    }
+
+    private static void ApplyInstallation(string root, bool uninstall, bool keepData, string selectedLibrary,
+        List<string> libraries, HashSet<string> keptLibraries, string updateTag = null, Process launcher = null)
+    {
+        using (var window = new WindowsProgress(Title, true))
+        {
+            Exception failure = null;
+            window.Shown += async (sender, args) =>
+            {
+                var progress = new Progress<string>(message => { if (!window.IsDisposed) window.Report(message); });
+                try
+                {
+                    await Task.Run(() => ChangeInstallation(root, uninstall, keepData, selectedLibrary,
+                        libraries, keptLibraries, progress, updateTag, launcher));
+                }
+                catch (Exception error) { failure = error; }
+                finally { window.Finish(); }
+            };
+            window.SetMessage(uninstall ? "Preparing to uninstall CWNG…" : "Preparing the installation…");
+            Application.Run(window);
+            if (failure != null) throw failure;
         }
     }
 
@@ -136,17 +163,19 @@ internal static class WindowsInstaller
         }
     }
 
-    private static void Open(string root)
+    private static void Open(string root, bool background = false)
     {
         string executable = Path.Combine(root, "CWNG.exe");
         if (!File.Exists(executable))
             throw new FileNotFoundException("CWNG.exe is missing. Reinstall CWNG to restore it.");
-        Process.Start(new ProcessStartInfo(executable) { WorkingDirectory = root, UseShellExecute = true });
+        Process.Start(new ProcessStartInfo(executable) {
+            WorkingDirectory = root, UseShellExecute = true, Arguments = background ? "--background" : ""
+        });
     }
 
     private static bool HasSource(string root)
     {
-        return File.Exists(Path.Combine(root, Installed)) ||
+        return File.Exists(Path.Combine(root, WindowsInstallation.InstalledReceipt)) ||
                (File.Exists(Path.Combine(root, "VERSION")) &&
                 (File.Exists(Path.Combine(root, @"scripts\windows-install.ps1")) ||
                  File.Exists(Path.Combine(root, "CWNG.exe"))));
@@ -224,7 +253,8 @@ internal static class WindowsInstaller
     }
 
     private static void ChangeInstallation(string root, bool uninstall, bool keepData, string selectedLibrary,
-        List<string> reviewedLibraries, HashSet<string> keptLibraries, IProgress<string> progress)
+        List<string> reviewedLibraries, HashSet<string> keptLibraries, IProgress<string> progress,
+        string updateTag, Process launcher)
     {
         using (var maintenance = new Mutex(false, WindowsInstallation.Prefix(root) + "-maintenance"))
         {
@@ -233,6 +263,12 @@ internal static class WindowsInstaller
             try
             {
                 CheckDestination(root);
+                if (updateTag != null)
+                {
+                    Version installed = WindowsReleases.InstalledVersion(root);
+                    if (installed == null || WindowsReleases.ParseTag(updateTag) <= installed)
+                        throw new IOException("This release is no longer an update for the installed copy of CWNG.");
+                }
                 string stage = Path.Combine(Path.GetDirectoryName(root), ".cwng-stage-" + Path.GetRandomFileName());
                 if (Directory.Exists(stage) || File.Exists(stage)) throw new IOException("The staging path is already in use.");
                 bool keepRecovery = false;
@@ -241,15 +277,17 @@ internal static class WindowsInstaller
                     if (!uninstall)
                     {
                         Directory.CreateDirectory(stage);
-                        DownloadRelease(stage, progress);
+                        string releaseTag = DownloadRelease(stage, progress, updateTag);
                         progress.Report("Installing the bundled tools and building the browser interface…");
                         Run(WindowsInstallation.Script(stage, "windows-install.ps1", ""), "Windows setup failed.");
                         string missing = WindowsInstallation.MissingFile(stage);
                         if (missing != null) throw new IOException("Windows setup did not create " + missing + ".");
-                        File.WriteAllText(Path.Combine(stage, Installed), "");
+                        File.WriteAllText(Path.Combine(stage, WindowsInstallation.InstalledReceipt), releaseTag);
                     }
 
                     StopInstallation(root, progress);
+                    if (launcher != null && !launcher.WaitForExit(15000))
+                        throw new IOException("The CWNG tray launcher is still closing. Wait for it to exit and try again.");
                     CheckDestination(root);
                     var libraries = FindLibraries(root);
                     if (uninstall && !libraries.SequenceEqual(reviewedLibraries, StringComparer.OrdinalIgnoreCase))
@@ -381,28 +419,25 @@ internal static class WindowsInstaller
         }
     }
 
-    private static void DownloadRelease(string stage, IProgress<string> progress)
+    private static string DownloadRelease(string stage, IProgress<string> progress, string updateTag)
     {
         progress.Report("Checking GitHub for the latest Windows release…");
-        ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
+        var releases = WindowsReleases.Published();
+        var release = updateTag == null ? releases.FirstOrDefault() :
+            releases.FirstOrDefault(item => item.Tag == updateTag && item.CanUpdate);
+        if (release == null)
+            throw new IOException(updateTag == null ? "GitHub has no published Windows release for CWNG." :
+                "The selected Windows update is no longer available on GitHub.");
+        var asset = release.Asset;
+        var uri = new Uri((string)asset["browser_download_url"]);
+        if (uri.Scheme != "https" || uri.Host != "github.com" ||
+            !uri.AbsolutePath.StartsWith("/dapih/Calibre-Web-NextGen/releases/download/", StringComparison.Ordinal))
+            throw new IOException("GitHub returned an unexpected download URL.");
+        string archive = Path.Combine(stage, ".download");
+        progress.Report("Downloading " + release.Tag + " from GitHub…");
         using (var web = new WebClient())
         {
             web.Headers[HttpRequestHeader.UserAgent] = "CWNG-Windows-Installer";
-            var serializer = new JavaScriptSerializer { MaxJsonLength = 8 * 1024 * 1024 };
-            var releases = serializer.Deserialize<Dictionary<string, object>[]>(web.DownloadString(ReleaseApi));
-            var release = releases.Where(item => !(bool)item["draft"] && !(bool)item["prerelease"])
-                        .OrderByDescending(item => (string)item["published_at"], StringComparer.Ordinal)
-                        .Select(item => new { Tag = (string)item["tag_name"], Asset = FindPayload(item) })
-                        .FirstOrDefault(item => item.Asset != null);
-            if (release == null) throw new IOException("GitHub has no published Windows release for CWNG.");
-            var asset = release.Asset;
-            string url = (string)asset["browser_download_url"];
-            var uri = new Uri(url);
-            if (uri.Scheme != "https" || uri.Host != "github.com" ||
-                !uri.AbsolutePath.StartsWith("/dapih/Calibre-Web-NextGen/releases/download/", StringComparison.Ordinal))
-                throw new IOException("GitHub returned an unexpected download URL.");
-            string archive = Path.Combine(stage, ".download");
-            progress.Report("Downloading " + release.Tag + " from GitHub…");
             try
             {
                 DownloadAsset(web, uri, archive, Convert.ToInt64(asset["size"]));
@@ -413,12 +448,12 @@ internal static class WindowsInstaller
                 progress.Report("Retrying the download with Windows PowerShell…");
                 DownloadWithPowerShell(uri, archive);
             }
-            VerifyAsset(archive, asset);
-            progress.Report("Extracting the verified Windows release…");
-            bool splitPackage = ((string)asset["name"]).EndsWith(".zip", StringComparison.Ordinal);
-            ExtractRelease(archive, stage, splitPackage, release.Tag);
-            File.Delete(archive);
         }
+        VerifyAsset(archive, asset);
+        progress.Report("Extracting the verified Windows release…");
+        ExtractRelease(archive, stage, release.IsZip, release.Tag);
+        File.Delete(archive);
+        return release.Tag;
     }
 
     private static void ExtractRelease(string archive, string stage, bool splitPackage, string tag)
@@ -444,28 +479,6 @@ internal static class WindowsInstaller
             using (var style = new StreamReader(Assembly.GetExecutingAssembly().GetManifestResourceStream("CWNG.LibrarySetupStyle")))
                 File.AppendAllText(Path.Combine(stage, @"cps\static\css\caliBlur_override.css"), Environment.NewLine + style.ReadToEnd());
         }
-    }
-
-    private static IEnumerable<Dictionary<string, object>> Assets(Dictionary<string, object> release)
-    {
-        return ((System.Collections.IEnumerable)release["assets"]).Cast<Dictionary<string, object>>();
-    }
-
-    private static Dictionary<string, object> FindPayload(Dictionary<string, object> release)
-    {
-        string tag = (string)release["tag_name"];
-        if (tag.StartsWith("cwng-windows-v", StringComparison.Ordinal))
-            return Assets(release).FirstOrDefault(asset => IsPayload(asset, tag + ".zip"));
-        if (!tag.StartsWith("windows-v", StringComparison.Ordinal)) return null;
-
-        var assets = Assets(release);
-        return assets.FirstOrDefault(asset => IsPayload(asset, "cwng-windows.zip")) ??
-               assets.FirstOrDefault(asset => IsPayload(asset, "CWNG.exe"));
-    }
-
-    private static bool IsPayload(Dictionary<string, object> asset, string name)
-    {
-        return (string)asset["name"] == name && (string)asset["state"] == "uploaded";
     }
 
     private static void DownloadAsset(WebClient web, Uri url, string file, long remaining)

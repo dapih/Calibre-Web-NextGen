@@ -20,10 +20,14 @@ New-Item -ItemType Directory -Force -Path $output | Out-Null
 $common = @(
     '/nologo', '/target:winexe', '/platform:x64', '/optimize+',
     "/win32icon:$(Join-Path $root 'cps\static\favicon.ico')",
-    '/reference:System.Windows.Forms.dll', '/reference:System.Drawing.dll'
+    '/reference:System.Windows.Forms.dll', '/reference:System.Drawing.dll',
+    '/reference:System.Web.Extensions.dll'
 )
-$shared = Join-Path $PSScriptRoot 'WindowsInstallation.cs'
-& $compiler @common "/out:$launcher" $shared (Join-Path $PSScriptRoot 'WindowsLauncher.cs')
+$shared = @(
+    (Join-Path $PSScriptRoot 'WindowsInstallation.cs'),
+    (Join-Path $PSScriptRoot 'WindowsReleases.cs')
+)
+& $compiler @common "/out:$launcher" @shared (Join-Path $PSScriptRoot 'WindowsLauncher.cs')
 if ($LASTEXITCODE -ne 0) { throw 'Could not compile CWNG.exe.' }
 
 $installerOptions = @(
@@ -31,12 +35,11 @@ $installerOptions = @(
     "/resource:$(Join-Path $PSScriptRoot 'windows-select-library.py'),CWNG.SelectLibrary",
     "/resource:$(Join-Path $PSScriptRoot 'windows_tray_control.py'),CWNG.TrayControl",
     "/resource:$(Join-Path $root $setupStyle),CWNG.LibrarySetupStyle",
-    '/reference:System.Web.Extensions.dll',
     "/reference:$(Join-Path $framework 'System.IO.Compression.dll')",
-    "/reference:$(Join-Path $framework 'System.IO.Compression.FileSystem.dll')", $shared,
+    "/reference:$(Join-Path $framework 'System.IO.Compression.FileSystem.dll')",
     (Join-Path $PSScriptRoot 'WindowsInstaller.cs')
 )
-& $compiler @common @installerOptions
+& $compiler @common @installerOptions @shared
 if ($LASTEXITCODE -ne 0) { throw 'Could not compile cwng-installer.exe.' }
 
 # Include the app and its Windows setup inputs from tracked source.
@@ -77,6 +80,9 @@ try {
         }
         [IO.Compression.ZipFileExtensions]::CreateEntryFromFile(
             $zip, $launcher, 'CWNG.exe', [IO.Compression.CompressionLevel]::Optimal
+        ) | Out-Null
+        [IO.Compression.ZipFileExtensions]::CreateEntryFromFile(
+            $zip, $installer, 'scripts/cwng-updater.exe', [IO.Compression.CompressionLevel]::Optimal
         ) | Out-Null
         [IO.Compression.ZipFileExtensions]::CreateEntryFromFile(
             $zip, (Join-Path $root 'docs/install/windows-package.md'), 'README.md', [IO.Compression.CompressionLevel]::Optimal

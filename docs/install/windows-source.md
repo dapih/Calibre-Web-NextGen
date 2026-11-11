@@ -72,7 +72,9 @@ Wait for imports to finish and stop the application before moving it. Move the e
 
 A linked Git worktree also contains Git administrative references outside its folder. Use `git worktree move` when moving the development checkout and preserving Git operations. An application-only copy can run independently of Git; retain `cps`, `scripts`, `.cwng-runtime`, `.cwng-data`, `start-windows.cmd`, `VERSION`, `LICENSE` and `dirs.json`. Keep the full source checkout if you want to update or rebuild it with setup.
 
-To update an installer-managed copy, run the Windows installer and choose **Reinstall**. If you have the older `cwng-installer.exe`, download a new installer once from the latest release tagged `cwng-windows-v…` and save it beside your existing `CWNG` folder. The older installer only finds releases with `windows-v…` tags. Choose to retain `.cwng-data` to keep your accounts, reading progress, settings, and pending ingest.
+On installer-managed copies with tray updates, CWNG checks the fork for a newer stable Windows release after startup and every six hours while running. The tray notifies you when an update is available. Choose **Update to v…** from the tray menu to install the indicated release. CWNG downloads and verifies the ZIP, then stops and restarts the app as part of the update. The tray update retains `.cwng-data` and the current library selection.
+
+For a manual update, run the Windows installer and choose **Reinstall**. If you have the older `cwng-installer.exe`, download a new installer once from the latest release tagged `cwng-windows-v…` and save it beside your existing `CWNG` folder. The older installer only finds releases with `windows-v…` tags. Choose to retain `.cwng-data` to keep your accounts, reading progress, settings, and pending ingest.
 
 For a source checkout, stop the application, back up `.cwng-data` and your library, update the source, and rerun `install-windows.cmd`. Source setup checks the installed tool receipts and stages replacements when pins change.
 
