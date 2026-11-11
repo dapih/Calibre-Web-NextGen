@@ -14,17 +14,13 @@ After setup, CWNG opens the main web interface. If a library that was previously
 
 ## Installer and app launcher
 
-Download the Windows x64 installer from the [fork's releases](https://github.com/dapih/Calibre-Web-NextGen/releases) and run it in a writable folder. It manages the `CWNG` folder beside it. After you confirm a new installation, it checks the fork's published Windows releases, verifies the selected asset against its GitHub SHA-256, and prepares the app, bundled tools, and browser interface. It opens the app after a successful install and then exits.
+Download the Windows x64 asset ending in `-installer.exe` from the [fork's releases](https://github.com/dapih/Calibre-Web-NextGen/releases) and run it in a writable folder. It manages the `CWNG` folder beside it. After you confirm a new installation, it checks the fork's published Windows releases, verifies the selected asset against its GitHub SHA-256, and prepares the app, bundled tools, and browser interface. It opens the app after a successful install and then exits.
 
-The latest Windows release is [CWNG for Windows v4.1.66-r2](https://github.com/dapih/Calibre-Web-NextGen/releases/tag/cwng-windows-v4.1.66-r2). Its installer is `cwng-windows-v4.1.66-r2-installer.exe`, and its application package is `cwng-windows-v4.1.66-r2.zip`.
+To install manually, extract the Windows ZIP into a new, writable folder named `CWNG`, run `install-windows.cmd`, and open `CWNG.exe`. The installer can manage that copy later when run from the parent folder.
 
 If the app is already installed, the installer offers **Reinstall**, **Uninstall**, and **Cancel**. It also offers **Open CWNG** when the app is running. Reinstall checks for the latest release, asks whether to retain `.cwng-data`, and preserves internal library files. If you select an internal library, CWNG uses it after reinstalling. Preserved reading progress is tied to the original library, so changing to a different library in the installer requires choosing fresh settings. For installs started from a console, shut down the console instance before reinstalling or uninstalling.
 
 For everyday use, run `CWNG.exe` inside the installed folder. It checks for the runtime and required files before starting. Left-click its tray icon to open the home page. Right-click for **Open CWNG**, **Restart**, and **Quit**. Restart opens the home page when the server is ready. Windows passes the URL to your default browser, which controls tab and focus behavior. Run `CWNG.exe --background` to start without opening the browser. Startup, restart, and quit show a progress window, and the launcher log is in `.cwng-data\windows-launcher.log`.
-
-To build from a Windows checkout, run `powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\windows-build-launcher.ps1`. It produces `cwng-installer.exe`, `CWNG.exe`, and `cwng-windows.zip` in `dist\windows`. The package already contains the app launcher. The installer can also read the verified source payload from the [older combined Windows release](https://github.com/dapih/Calibre-Web-NextGen/releases/tag/windows-v4.1.62).
-
-Fork maintainers can run **Windows package** from Actions on `main`. Leave the tag blank to test the package and the upgrade from the previous published Windows release. Enter a tag in the form `cwng-windows-vX.Y.Z-rN`. For example, `cwng-windows-v4.1.66-r3` creates a draft titled **CWNG for Windows v4.1.66-r3** with the assets `cwng-windows-v4.1.66-r3-installer.exe` and `cwng-windows-v4.1.66-r3.zip`. Confirm the tag, assets, and release notes before publishing the draft. Use the next revision for another build of the same app version.
 
 ## Restarting and stopping
 
@@ -80,8 +76,6 @@ To update an installer-managed copy, run the Windows installer and choose **Rein
 
 For a source checkout, stop the application, back up `.cwng-data` and your library, update the source, and rerun `install-windows.cmd`. Source setup checks the installed tool receipts and stages replacements when pins change.
 
-Source setup reads the shared Python, Calibre and kepubify versions from the root `Dockerfile`. The Windows release build copies those pins into a manifest in the ZIP, which includes a Windows-only README. When merging an upstream pin change, add the verified SHA-256 for the corresponding Windows artifact to [`scripts/windows-tool-checksums.psd1`](../../scripts/windows-tool-checksums.psd1). Setup reports a missing checksum before touching the runtime. ImageMagick and build-only Node use their own Windows pins.
-
 ### Uninstall on Windows
 
 Run the Windows installer and choose **Uninstall**. It asks separately about retaining `.cwng-data` and each detected internal library. Empty default library folders are omitted. Retained files stay inside `CWNG` and are reused on a later install. A clean uninstall removes `CWNG`. The sibling `calibre-library` and other libraries outside `CWNG` remain in place.
@@ -112,6 +106,21 @@ if ($alias.LinkType -eq 'Junction') { $alias.Delete() }
 
 ## Interrupted imports
 
-Book ingest is an upstream feature. The [Docker setup](../../docker-compose.yml) uses the container inbox `/cwa-book-ingest`. The Windows launcher sets `.cwng-data\ingest` as its portable default and uses the existing ingest processor.
+The Windows launcher sets `.cwng-data\ingest` as its portable default and uses the existing ingest processor.
 
 The Windows worker imports stable files after a library has been configured. A failed or interrupted import stops the worker and leaves `unfinished-ingest.json` in `.cwng-data\config`; the original and working copy are retained. Check `background-ingest.log` and the library before deciding whether to retry. After resolving the interrupted import, remove the marker to resume. After a forced stop, make sure the import process has ended before restarting. Configuration and ingest paths in the recovery marker are adjusted when their parent installation moves.
+
+## Building and publishing Windows releases
+
+Bring stable upstream releases into the fork through a sync PR. Review urgent upstream fixes individually. For local changes, push a branch to the fork and open a PR to `main`. The required **Windows package and smoke test** check builds the ZIP, installs and starts CWNG, and imports a book.
+
+Source setup reads the shared Python, Calibre and kepubify versions from the root `Dockerfile`. When an upstream pin changes, add the verified SHA-256 for the corresponding Windows artifact to [`scripts/windows-tool-checksums.psd1`](../../scripts/windows-tool-checksums.psd1). Setup requires those checksums before provisioning and verifies each download before extraction. ImageMagick and build-only Node use their own Windows pins.
+
+To build locally, run `powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\windows-build-launcher.ps1` from a Windows checkout. It writes `cwng-installer.exe`, `CWNG.exe`, and `cwng-windows.zip` to `dist\windows`. The ZIP contains the app launcher, a Windows-only `README.md`, and the tool versions in `scripts/windows-tool-versions.psd1`.
+
+Run [**Windows package**](https://github.com/dapih/Calibre-Web-NextGen/actions/workflows/windows-release.yml) on `main`. A blank tag runs the install and upgrade smoke checks without creating a draft. To prepare a release, enter `cwng-windows-vX.Y.Z-rN` using the app version in `VERSION`. Increment `N` for another build of that version. The workflow checks the upgrade from the last published Windows ZIP, then creates a draft titled **CWNG for Windows vX.Y.Z-rN** with these assets.
+
+- `cwng-windows-vX.Y.Z-rN-installer.exe`
+- `cwng-windows-vX.Y.Z-rN.zip`
+
+Review the draft title, filenames, and notes, then publish it on GitHub. GitHub locks the assets after publication. [v4.1.66-r2](https://github.com/dapih/Calibre-Web-NextGen/releases/tag/cwng-windows-v4.1.66-r2) introduced the versioned filenames and was published before the ZIP cleanup.

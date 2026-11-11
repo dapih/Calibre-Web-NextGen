@@ -4,7 +4,7 @@ Calibre-Web NextGen runs on Windows x64. Setup needs internet access to download
 
 ## Install and open CWNG
 
-Use the Windows installer from the [release page](https://github.com/dapih/Calibre-Web-NextGen/releases) to install the app into a `CWNG` folder beside the installer. If you downloaded the ZIP separately, extract it into a writable folder, run `install-windows.cmd`, then open `CWNG.exe`.
+Download the asset ending in `-installer.exe` from the [release page](https://github.com/dapih/Calibre-Web-NextGen/releases) to install the app into a `CWNG` folder beside the installer. To install manually, extract the ZIP into a new, writable folder named `CWNG`, run `install-windows.cmd`, then open `CWNG.exe`.
 
 On a new installation, sign in with `admin` and `admin123`, then change the password. Create a library or select an existing Calibre library. Put files you want to import in `.cwng-data\ingest` after choosing a library.
 
