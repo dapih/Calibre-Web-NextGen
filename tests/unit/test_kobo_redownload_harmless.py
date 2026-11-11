@@ -96,6 +96,7 @@ def test_on_demand_kepub_conversion_does_not_touch_last_modified(tmp_path, monke
     (tmp_path / "hellenistic.kepub").write_bytes(b"derived")
     book = SimpleNamespace(
         id=BOOK_ID, title="Hellenistic Astrology", path="Brennan/Hellenistic",
+        has_cover=False,
         last_modified=datetime(2026, 9, 10, 23, 6, tzinfo=timezone.utc),
         data=[SimpleNamespace(name="hellenistic", format="EPUB")],
     )
