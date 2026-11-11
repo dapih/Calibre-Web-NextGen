@@ -7,6 +7,12 @@ the Windows packaging revision for that application version.
 See [pending Windows changes](../changelog.d/windows/) and the
 [upstream application changelog](../CHANGELOG.md).
 
+## [cwng-windows-v4.1.66-r3](https://github.com/dapih/Calibre-Web-NextGen/releases/tag/cwng-windows-v4.1.66-r3) · 2026-11-11
+
+### Changed
+
+- **The Windows ZIP includes a Windows-only README.** It explains how to install from the ZIP, open the tray launcher, and update or remove the app. The package omits the Dockerfile, container setup guides, and development files. Windows setup reads its tool versions from a bundled manifest.
+
 ## [cwng-windows-v4.1.66-r2](https://github.com/dapih/Calibre-Web-NextGen/releases/tag/cwng-windows-v4.1.66-r2) · 2026-11-11
 
 - The release title is **CWNG for Windows v4.1.66-r2**. The downloads are
