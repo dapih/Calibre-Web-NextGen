@@ -196,10 +196,12 @@ jobs:
           # log instead of a silent step-timeout wall. 90 < the 120s
           # pytest-timeout on purpose: a hung test logs stacks first, then
           # pytest-timeout attempts the interrupt.
+          # Report all failures together on the fork, where an upstream sync
+          # can expose several independent compatibility regressions.
           pytest -m "smoke or unit" \
             -n auto \
             --dist=loadfile \
-            --maxfail=3 \
+            --maxfail=${{ github.repository == 'dapih/Calibre-Web-NextGen' && '0' || '3' }} \
             -v \
             -rs \
             --tb=short \
