@@ -50,7 +50,7 @@ jobs:
     timeout-minutes: 10
     # Prereleases are not a delivery channel for devices, and the script only
     # accepts vX.Y.Z tags anyway.
-    if: github.event_name == 'workflow_dispatch' || github.event.release.prerelease == false
+    if: github.event_name == 'workflow_dispatch' || (github.event.release.prerelease == false && !startsWith(github.event.release.tag_name, 'windows-v'))
     steps:
       # Constrain the tag to vX.Y.Z before it is ever used as a git ref. Only an
       # account that can publish a release can reach this workflow, but a ref

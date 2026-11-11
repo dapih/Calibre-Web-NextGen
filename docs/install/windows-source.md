@@ -22,6 +22,8 @@ For everyday use, run `CWNG.exe` inside the installed folder. It checks for the 
 
 To build from a Windows checkout, run `powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\windows-build-launcher.ps1`. It produces `cwng-installer.exe`, `CWNG.exe`, and `cwng-windows.zip` in `dist\windows`. A new Windows release uses a `windows-v…` tag and publishes `cwng-installer.exe` and `cwng-windows.zip`. The package already contains the app launcher. The installer can also read the verified source payload from the [older combined Windows release](https://github.com/dapih/Calibre-Web-NextGen/releases/tag/windows-v4.1.62).
 
+Fork maintainers can run **Windows package** from Actions on `main`. Leave the tag blank to test the package and the upgrade from the previous published Windows release. Enter a new tag such as `windows-v4.1.66-r1` to attach the tested installer and ZIP to a draft for the checked-out commit. Confirm the tag, assets, and release notes before publishing the draft. Use the next revision for another build of the same app version.
+
 ## Restarting and stopping
 
 Wait for uploads, imports, and conversions to finish. From the tray, choose **Restart** or **Quit**. You can also open `http://127.0.0.1:8083/admin/view` as an administrator and choose **Restart** or **Shutdown** near the bottom. Restart waits for the Windows background workers and instance lock to finish before starting a replacement with the same isolated Python and UTF-8 options.
