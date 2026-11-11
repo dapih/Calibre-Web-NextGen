@@ -29,8 +29,7 @@ EDITBOOKS = REPO / "cps" / "editbooks.py"
 
 def _func_src():
     src = EDITBOOKS.read_text(encoding="utf-8")
-    wrapper, body = src.split("def _delete_book_from_table_locked(", 1)
-    assert "return _delete_book_from_table_locked(" in wrapper.split("def delete_book_from_table(", 1)[1]
+    body = src.split("def delete_book_from_table", 1)[1]
     return body.split("\ndef ", 1)[0]
 
 

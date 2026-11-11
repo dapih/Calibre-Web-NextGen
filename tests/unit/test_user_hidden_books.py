@@ -19,7 +19,6 @@ Post-fix: `UserHiddenBook` table (per-user × book_id, unique pair) +
 """
 
 import inspect
-from contextlib import nullcontext
 from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
@@ -495,23 +494,32 @@ class TestHiddenBooksRouteAccess:
             "'unavailable')"
         )
 
-    def test_edit_book_post_allows_hidden_books(self, monkeypatch):
-        """Metadata saves can look up the current user's hidden books."""
-        from cps import editbooks
-
-        class LookupReached(Exception):
-            pass
-
-        library = MagicMock()
-        library.get_filtered_book.side_effect = LookupReached
-        monkeypatch.setattr(editbooks, "calibre_db", library)
-        monkeypatch.setattr(editbooks, "current_user", MagicMock(name="reader"))
-        monkeypatch.setattr(editbooks, "metadata_db_write_lock", nullcontext)
-
-        with pytest.raises(LookupReached):
-            editbooks.do_edit_book(42)
-        library.get_filtered_book.assert_called_once_with(
-            42, allow_show_archived=True, allow_show_hidden=True
+    def test_edit_book_post_allows_hidden_books(self):
+        """do_edit_book backs the /admin/book/<id> POST route. Same fix:
+        the POST handler must allow_show_hidden so a user's metadata
+        save against their own hidden book succeeds instead of bouncing
+        with 'unavailable'."""
+        import re
+        src = self._src("cps/editbooks.py")
+        m = re.search(
+            r"def do_edit_book\(.*?\n(?=\n\ndef |\nclass |\Z)",
+            src, re.DOTALL,
+        )
+        assert m is not None, "do_edit_book function not found in cps/editbooks.py"
+        body = m.group(0)
+        # First lookup call only — defensive about future calls in the
+        # function body that legitimately may not need allow_show_hidden.
+        first_call = re.search(
+            r"calibre_db\.get_filtered_book\([^)]*\)",
+            body,
+        )
+        assert first_call is not None, (
+            "do_edit_book must call calibre_db.get_filtered_book to load the book"
+        )
+        assert "allow_show_hidden=True" in first_call.group(0), (
+            "do_edit_book's primary book lookup must pass allow_show_hidden=True "
+            "so the metadata save succeeds against a user's own hidden book "
+            "(@droM4X #319 pushback)"
         )
 
     def test_serve_book_route_allows_hidden_books(self):

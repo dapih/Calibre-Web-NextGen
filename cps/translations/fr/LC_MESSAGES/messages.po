@@ -697,14 +697,6 @@ msgstr "La mise à jour a échoué :"
 msgid "HTTP Error"
 msgstr "Erreur HTTP"
 
-#: cps/spa_strings.py
-msgid "HTTPS, LDAP and OAuth are not yet supported in native Windows mode. Home-network connections use unencrypted HTTP."
-msgstr "HTTPS, LDAP et OAuth ne sont pas encore pris en charge en mode Windows natif. Les connexions sur le réseau domestique utilisent HTTP sans chiffrement."
-
-#: cps/spa_strings.py
-msgid "This download client is not available on Windows; use an OPDS source."
-msgstr "Ce client de téléchargement n’est pas disponible sous Windows. Utilisez une source OPDS."
-
 #: cps/admin.py cps/updater.py
 msgid "Connection error"
 msgstr "Erreur de connexion"

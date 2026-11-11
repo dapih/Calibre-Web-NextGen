@@ -228,7 +228,6 @@ def test_conversion_advances_modified_without_touching_synced_rows(monkeypatch):
 
     old_modified = datetime(2020, 1, 1, tzinfo=timezone.utc)
     book = SimpleNamespace(id=1, title="Book", path="Author/Book",
-                           has_cover=False,
                            last_modified=old_modified,
                            data=[SimpleNamespace(name="book")])
     synced_rows = [(1, 1), (2, 1)]
@@ -342,7 +341,6 @@ def test_truncated_kepub_is_not_adopted_as_database_format(monkeypatch, tmp_path
     from cps.tasks import convert
 
     book = SimpleNamespace(id=1, title="Book", path="Author/Book",
-                           has_cover=False,
                            data=[SimpleNamespace(name="book")])
     merged = []
 

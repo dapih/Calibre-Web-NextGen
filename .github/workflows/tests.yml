@@ -99,21 +99,6 @@ jobs:
           # What's New ledger and exercise less history than normal CI can.
           fetch-depth: 0
 
-      - name: Load upstream release history for the fork
-        if: github.repository == 'dapih/Calibre-Web-NextGen'
-        shell: bash
-        run: |
-          # The fork publishes Windows tags. The inherited changelog and plugin
-          # tests need upstream's stable tags in the runner checkout.
-          git fetch --no-tags https://github.com/new-usemame/Calibre-Web-NextGen.git \
-            'refs/tags/v*:refs/cwng-upstream-tags/v*'
-          git for-each-ref --merged=HEAD --format='%(refname:strip=2) %(objectname)' refs/cwng-upstream-tags/ |
-            while read -r tag oid; do
-              if ! git show-ref --verify --quiet "refs/tags/$tag"; then
-                git update-ref "refs/tags/$tag" "$oid" ""
-              fi
-            done
-
       - name: Remove Python bytecode and pycache
         run: |
           echo "Removing any leftover .pyc and pycache"
@@ -196,12 +181,10 @@ jobs:
           # log instead of a silent step-timeout wall. 90 < the 120s
           # pytest-timeout on purpose: a hung test logs stacks first, then
           # pytest-timeout attempts the interrupt.
-          # Report all failures together on the fork, where an upstream sync
-          # can expose several independent compatibility regressions.
           pytest -m "smoke or unit" \
             -n auto \
             --dist=loadfile \
-            --maxfail=${{ github.repository == 'dapih/Calibre-Web-NextGen' && '0' || '3' }} \
+            --maxfail=3 \
             -v \
             -rs \
             --tb=short \
@@ -232,7 +215,7 @@ jobs:
       
       - name: Comment PR with results
         uses: actions/github-script@v9
-        if: github.repository != 'dapih/Calibre-Web-NextGen' && github.event_name == 'pull_request' && failure()
+        if: github.event_name == 'pull_request' && failure()
         with:
           script: |
             github.rest.issues.createComment({

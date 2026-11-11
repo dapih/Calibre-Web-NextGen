@@ -48,7 +48,7 @@ def test_cover_thumbnail_refresh_is_not_queued_before_metadata_commit():
     commit. Queueing it before commit lets the worker race the request thread and
     reproduce the SQLite/GIL deadlock described in issue #1256.
     """
-    do_edit_book = _function_def(_module_tree("cps/editbooks.py"), "_do_edit_book_locked")
+    do_edit_book = _function_def(_module_tree("cps/editbooks.py"), "do_edit_book")
 
     thumbnail_lines = []
     commit_lines = []
@@ -79,7 +79,7 @@ def test_cover_thumbnail_refresh_passes_committed_book_snapshot():
     The post-commit refresh should pass the book path and last_modified timestamp
     so single-book thumbnail generation does not need to reopen metadata.db.
     """
-    do_edit_book = _function_def(_module_tree("cps/editbooks.py"), "_do_edit_book_locked")
+    do_edit_book = _function_def(_module_tree("cps/editbooks.py"), "do_edit_book")
 
     refresh_calls = [
         node for node in ast.walk(do_edit_book)

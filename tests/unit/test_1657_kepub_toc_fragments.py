@@ -866,7 +866,6 @@ def test_conversion_diagnostic_names_book_and_fragment_count(tmp_path, caplog, m
         id=42,
         title="Synthetic Fragment Book",
         path="Synthetic/Fragment Book",
-        has_cover=False,
         data=[SimpleNamespace(name="affected")],
     )
 

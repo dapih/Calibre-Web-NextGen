@@ -145,10 +145,7 @@ def test_run_ended_marker_is_printed_unconditionally_for_all_flag():
     holder = None
     for node in ast.walk(main_fn):
         for field in ("body", "orelse"):
-            statements = getattr(node, field, None)
-            if not isinstance(statements, list):
-                continue
-            for stmt in statements:
+            for stmt in getattr(node, field, []) or []:
                 if RUN_ENDED_MARKER in ast.unparse(stmt):
                     marker_stmt, holder = stmt, node
     assert marker_stmt is not None, "run-ended marker is not printed from main()"
