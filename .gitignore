@@ -30,7 +30,7 @@ docs/*
 !docs/*.md
 # The README progress tracker's verdicts and ledger (scripts/progress_tracker.py).
 !docs/progress-tracker/
-# Repository agent instructions and architectural decisions.
+# Engineering skill configuration and architectural decisions.
 !docs/agents/
 !docs/adr/
 .venv-activate.sh
