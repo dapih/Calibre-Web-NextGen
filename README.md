@@ -147,7 +147,7 @@ Choose the [Windows source installation](#windows-portable-source-installation) 
 
 Use Windows x64 and a writable folder. Setup needs internet access; it downloads the runtime and tools locally without Docker, WSL, a global Python/Calibre installation or a system PATH change.
 
-[Download `cwng-installer.exe` for Windows x64](https://github.com/dapih/Calibre-Web-NextGen/releases/download/windows-v4.1.62-r3/cwng-installer.exe) and run it in a writable folder. It downloads the latest Windows release, installs it in the adjacent `CWNG` folder, and opens the app. For everyday use, open `CWNG\CWNG.exe`. Its system tray menu offers **Open CWNG**, **Restart**, and **Quit**. Use the installer again to reinstall or uninstall. See the [Windows installation guide](docs/install/windows-source.md#installer-and-app-launcher).
+Download the Windows x64 installer from the [fork's releases](https://github.com/dapih/Calibre-Web-NextGen/releases) and run it in a writable folder. It downloads the latest Windows release, installs it in the adjacent `CWNG` folder, and opens the app. For everyday use, open `CWNG\CWNG.exe`. Its system tray menu offers **Open CWNG**, **Restart**, and **Quit**. Use the installer to reinstall or uninstall. See the [Windows installation guide](docs/install/windows-source.md#installer-and-app-launcher).
 
 #### Install from source
 
@@ -166,7 +166,7 @@ The Windows guide covers [copying legacy profile data](docs/install/windows-sour
 
 #### Uninstall on Windows
 
-If you installed with `cwng-installer.exe`, run it again and choose **Uninstall**. Choose which local settings and internal libraries to keep. Retained data stays in `CWNG` for a later install. The steps below also work for source and older installations.
+If you used the Windows installer, run it again and choose **Uninstall**. Choose which local settings and internal libraries to keep. Retained data stays in `CWNG` for a later install. The steps below also work for source and older installations.
 
 1. Wait for active imports and conversions. Choose **Quit** from the system tray, or use **Shutdown** on the Admin page or Ctrl+C for a console launch. Wait for the tray icon to disappear or for the launcher to exit.
 2. Back up `.cwng-data` outside the installation if you want to keep settings, accounts, reading progress, or pending ingest files. Back up or move any library stored inside `CWNG`, including `metadata.db` and all book folders. The default sibling `calibre-library` and other external libraries stay in place.

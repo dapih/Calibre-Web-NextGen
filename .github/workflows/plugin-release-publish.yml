@@ -50,7 +50,11 @@ jobs:
     timeout-minutes: 10
     # Prereleases are not a delivery channel for devices, and the script only
     # accepts vX.Y.Z tags anyway.
-    if: github.event_name == 'workflow_dispatch' || (github.event.release.prerelease == false && !startsWith(github.event.release.tag_name, 'windows-v'))
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.release.prerelease == false &&
+       !startsWith(github.event.release.tag_name, 'windows-v') &&
+       !startsWith(github.event.release.tag_name, 'cwng-windows-v'))
     # Set at job level so the failure step's `if` reads a value the docs
     # guarantee is in scope there, rather than relying on the step's own env.
     env:

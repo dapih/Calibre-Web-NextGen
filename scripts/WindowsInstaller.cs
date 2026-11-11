@@ -36,7 +36,7 @@ internal static class WindowsInstaller
             Application.EnableVisualStyles();
             string parent = Path.GetDirectoryName(Application.ExecutablePath);
             if (Path.GetFileName(parent).Equals("CWNG", StringComparison.OrdinalIgnoreCase) && HasSource(parent))
-                throw new IOException("Move cwng-installer.exe to the folder that contains CWNG before running it.");
+                throw new IOException("Move the Windows installer to the folder that contains CWNG before running it.");
             string root = Path.Combine(parent, "CWNG");
             CheckDestination(root);
             bool installed = HasSource(root);
@@ -390,20 +390,19 @@ internal static class WindowsInstaller
             web.Headers[HttpRequestHeader.UserAgent] = "CWNG-Windows-Installer";
             var serializer = new JavaScriptSerializer { MaxJsonLength = 8 * 1024 * 1024 };
             var releases = serializer.Deserialize<Dictionary<string, object>[]>(web.DownloadString(ReleaseApi));
-            var release = releases.Where(item => !(bool)item["draft"] && !(bool)item["prerelease"] &&
-                        ((string)item["tag_name"]).StartsWith("windows-v", StringComparison.Ordinal) &&
-                        Assets(item).Any(candidate => IsPayload(candidate, "cwng-windows.zip") || IsPayload(candidate, "CWNG.exe")))
-                        .OrderByDescending(item => (string)item["published_at"], StringComparer.Ordinal).FirstOrDefault();
+            var release = releases.Where(item => !(bool)item["draft"] && !(bool)item["prerelease"])
+                        .OrderByDescending(item => (string)item["published_at"], StringComparer.Ordinal)
+                        .Select(item => new { Tag = (string)item["tag_name"], Asset = FindPayload(item) })
+                        .FirstOrDefault(item => item.Asset != null);
             if (release == null) throw new IOException("GitHub has no published Windows release for CWNG.");
-            var asset = Assets(release).FirstOrDefault(item => IsPayload(item, "cwng-windows.zip")) ??
-                        Assets(release).First(item => IsPayload(item, "CWNG.exe"));
+            var asset = release.Asset;
             string url = (string)asset["browser_download_url"];
             var uri = new Uri(url);
             if (uri.Scheme != "https" || uri.Host != "github.com" ||
                 !uri.AbsolutePath.StartsWith("/dapih/Calibre-Web-NextGen/releases/download/", StringComparison.Ordinal))
                 throw new IOException("GitHub returned an unexpected download URL.");
             string archive = Path.Combine(stage, ".download");
-            progress.Report("Downloading " + release["tag_name"] + " from GitHub…");
+            progress.Report("Downloading " + release.Tag + " from GitHub…");
             try
             {
                 DownloadAsset(web, uri, archive, Convert.ToInt64(asset["size"]));
@@ -416,7 +415,8 @@ internal static class WindowsInstaller
             }
             VerifyAsset(archive, asset);
             progress.Report("Extracting the verified Windows release…");
-            ExtractRelease(archive, stage, IsPayload(asset, "cwng-windows.zip"), (string)release["tag_name"]);
+            bool splitPackage = ((string)asset["name"]).EndsWith(".zip", StringComparison.Ordinal);
+            ExtractRelease(archive, stage, splitPackage, release.Tag);
             File.Delete(archive);
         }
     }
@@ -449,6 +449,18 @@ internal static class WindowsInstaller
     private static IEnumerable<Dictionary<string, object>> Assets(Dictionary<string, object> release)
     {
         return ((System.Collections.IEnumerable)release["assets"]).Cast<Dictionary<string, object>>();
+    }
+
+    private static Dictionary<string, object> FindPayload(Dictionary<string, object> release)
+    {
+        string tag = (string)release["tag_name"];
+        if (tag.StartsWith("cwng-windows-v", StringComparison.Ordinal))
+            return Assets(release).FirstOrDefault(asset => IsPayload(asset, tag + ".zip"));
+        if (!tag.StartsWith("windows-v", StringComparison.Ordinal)) return null;
+
+        var assets = Assets(release);
+        return assets.FirstOrDefault(asset => IsPayload(asset, "cwng-windows.zip")) ??
+               assets.FirstOrDefault(asset => IsPayload(asset, "CWNG.exe"));
     }
 
     private static bool IsPayload(Dictionary<string, object> asset, string name)
