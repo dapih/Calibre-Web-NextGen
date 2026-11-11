@@ -99,6 +99,21 @@ jobs:
           # What's New ledger and exercise less history than normal CI can.
           fetch-depth: 0
 
+      - name: Load upstream release history for the fork
+        if: github.repository == 'dapih/Calibre-Web-NextGen'
+        shell: bash
+        run: |
+          # The fork publishes Windows tags. The inherited changelog and plugin
+          # tests need upstream's stable tags in the runner checkout.
+          git fetch --no-tags https://github.com/new-usemame/Calibre-Web-NextGen.git \
+            'refs/tags/v*:refs/cwng-upstream-tags/v*'
+          git for-each-ref --merged=HEAD --format='%(refname:strip=2) %(objectname)' refs/cwng-upstream-tags/ |
+            while read -r tag oid; do
+              if ! git show-ref --verify --quiet "refs/tags/$tag"; then
+                git update-ref "refs/tags/$tag" "$oid" ""
+              fi
+            done
+
       - name: Remove Python bytecode and pycache
         run: |
           echo "Removing any leftover .pyc and pycache"

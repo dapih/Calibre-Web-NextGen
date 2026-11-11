@@ -55,15 +55,27 @@ DYNAMIC_PYTHON_READERS = frozenset(
     }
 )
 
-# These names are intentionally outside the deployment SSOT. Each is owned by an
-# external runtime/tool rather than accepted as CWNG configuration.
+# These names are intentionally outside the deployment SSOT. They belong to
+# an external runtime, a tool, or the Windows launcher and worker protocol.
 SSOT_EXCEPTIONS = {
     "CALIBRE_CONFIG_DIRECTORY": "written by CWNG for Calibre child processes; Calibre owns and consumes it",
     "CI": "provided and interpreted by the CI and Playwright runtimes",
     "CONFIG_DIR": "Compose interpolation helper; CWNG reads the resulting CALIBRE_DBPATH instead",
+    "CWNG_CALIBRE_TOOLS": "private Calibre directory for native Windows workers",
+    "CWNG_KEPUBIFY_PATH": "private kepubify executable for native Windows workers",
+    "CWNG_NATIVE_CANCEL_FILE": "cancellation marker used by a native conversion job",
+    "CWNG_NATIVE_GATE_DIR": "writer lease directory supplied by the Windows coordinator",
+    "CWNG_NATIVE_HELPER": "job-control executable supplied by the Windows coordinator",
+    "CWNG_NATIVE_JOB_GENERATION": "job membership identifier supplied by the Windows coordinator",
+    "CWNG_NATIVE_MODE": "native worker mode supplied by the Windows coordinator",
+    "CWNG_NATIVE_STATE_DIR": "job state directory supplied by the Windows coordinator",
+    "CWNG_NATIVE_WRITER_GATE": "writer lease flag supplied by the Windows coordinator",
+    "CWNG_TRAY_CONTROL": "named event prefix supplied by the Windows tray launcher",
     "LISTEN_FDS": "provided by systemd's socket-activation protocol",
+    "LOCALAPPDATA": "provided by Windows for per-user application data",
     "NODE_ENV": "provided and interpreted by the Node and Vite runtimes",
     "SECRET": "injected transiently by the operator's secret broker into measurement tools",
+    "USERPROFILE": "provided by Windows for the user's profile directory",
 
 }
 
