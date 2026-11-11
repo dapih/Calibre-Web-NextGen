@@ -1,9 +1,13 @@
 # Changelog
 
-All notable user-facing changes to Calibre-Web NextGen. Format follows
+This file tracks upstream Calibre-Web NextGen application releases. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-**Docker tags:** `:latest` = newest stable release · `:dev` = every merge to main
+See the [Windows release history](changelogs/windows.md) for the fork's
+packaging revisions and [Windows fragments](changelog.d/windows/) for changes
+awaiting a Windows release.
+
+**Upstream Docker tags:** `:latest` = newest stable release · `:dev` = every merge to main
 (canary channel — what the maintainers run at home) · `:vX.Y.Z` = immutable pins
 for rollback.
 

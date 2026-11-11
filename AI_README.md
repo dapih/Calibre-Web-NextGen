@@ -1,14 +1,32 @@
-# AI_README — assistant-driven setup for Calibre-Web-NextGen
+# Assistant-driven setup for Calibre-Web NextGen
 
-You are an AI assistant and a human asked you to set up
-[Calibre-Web-NextGen](https://github.com/new-usemame/Calibre-Web-NextGen) —
-a self-hosted ebook server (web library + reader, automatic book ingest,
-Kobo/KOReader sync, OPDS).
+This repository adds native Windows x64 setup and packaging to Calibre-Web
+NextGen, a self-hosted ebook server with a web library, reader, automatic ingest,
+Kobo and KOReader sync, and OPDS. Its direct upstream is
+[`new-usemame/Calibre-Web-NextGen`](https://github.com/new-usemame/Calibre-Web-NextGen).
 
-This file is written for **you**, not the human. Work through it top to
-bottom. Ask the human only the questions in §1; detect everything else
-yourself. Never skip a **VERIFY** gate — if one fails, use §7, and if you
-still can't fix it, file an issue per §8 instead of leaving the human stuck.
+Use [native Windows setup](#native-windows-setup) on Windows x64. For a Docker
+deployment, follow [the upstream container instructions below](#upstream-container-setup).
+
+## Native Windows setup
+
+1. Confirm where CWNG and the library should live. For an existing installation, locate its `.cwng-data`, its pending ingest, and the library containing `metadata.db`. Check whether CWNG is running before changing its files.
+2. For a new install, download the Windows asset ending in `-installer.exe` from the [fork's releases](https://github.com/dapih/Calibre-Web-NextGen/releases). Run it from a writable parent folder. For a checkout or extracted ZIP, follow the [Windows installation guide](docs/install/windows-source.md) for the setup command and launcher.
+3. Open the local address shown by CWNG. On a fresh install, sign in with `admin` and `admin123`, change the password, and create or select the library. Keep the default loopback binding unless the human needs network access.
+4. Confirm the web UI opens and shows the expected library. If verifying ingest, use a copy of a book because the worker removes successfully imported files from the ingest folder.
+5. For updates, use **Reinstall** from the versioned installer beside the existing `CWNG` folder and retain `.cwng-data` when keeping the current setup. Follow the guide for [legacy data](docs/install/windows-source.md#existing-windows-source-installations) or [moves, updates, and removal](docs/install/windows-source.md#moving-updating-and-removal).
+
+For a failed startup or import, check the launcher log at
+`.cwng-data\windows-launcher.log` and application and ingest logs under
+`.cwng-data\config`. Use the [interrupted import guidance](docs/install/windows-source.md#interrupted-imports)
+if an import stops. Follow the [fork issue workflow](docs/agents/issue-tracker.md)
+for Windows reports. Hand back the app URL, install and library paths,
+the result of verification, and how to update.
+
+## Upstream container setup
+
+Work through the steps below for the upstream Docker image. Use §7 when a
+verification step fails and §8 if you need to prepare a report.
 
 Sections: [1 Ask](#1-ask-the-human) · [2 Detect](#2-detect-the-system) ·
 [3 Install](#3-install-and-start) · [4 Secure](#4-secure-and-configure) ·
@@ -50,7 +68,7 @@ Adjust for the platform you found:
 |---|---|
 | Linux server | Set `PUID`/`PGID` to the human's `id -u` / `id -g` so library files stay editable outside the container. |
 | macOS (Docker Desktop) | Defaults work; file-event watching automatically falls back to polling, so ingest takes a few extra seconds. Keep `PUID=1000`. |
-| Windows | Use WSL2 + Docker Desktop, and keep the data folders **inside the WSL filesystem** (e.g. `~/calibre-web`), not under `/mnt/c/` — NTFS-bridged binds are slow and drop file events. |
+| Windows with Docker | Use WSL2 + Docker Desktop, and keep the data folders **inside the WSL filesystem** (e.g. `~/calibre-web`). NTFS-bridged binds under `/mnt/c/` are slow and can drop file events. |
 | Synology / QNAP NAS | Use Container Manager / Container Station with the same compose. Set `PUID`/`PGID` to the NAS user's IDs (`id <user>` over SSH). |
 | Data on NFS/SMB share | Add `- NETWORK_SHARE_MODE=true` to the environment. Required — without it SQLite locks up on network filesystems. |
 | Path contains spaces | Quote every volume path in the compose file: `- "/Volumes/My Drive/calibre-web/config:/config"`. |
