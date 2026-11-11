@@ -32,6 +32,7 @@ function Start-And-Check {
     $metadata = Join-Path $InstallRoot 'library\metadata.db'
     $python = Join-Path $InstallRoot '.cwng-runtime\python\python.exe'
     $version = (Get-Content -LiteralPath (Join-Path $InstallRoot 'VERSION') -Raw).Trim()
+    $credentials = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes('admin:admin123'))
     if (Test-Path -LiteralPath $address) { Remove-Item -LiteralPath $address }
     $listener = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, 0)
     $listener.Start()
@@ -49,12 +50,15 @@ function Start-And-Check {
         do {
             if ($process.HasExited) { throw 'The launcher exited before CWNG became healthy.' }
             if (Test-Path -LiteralPath $address) {
-                $url = (Get-Content -LiteralPath $address -Raw).Trim()
+                $url = [uri](Get-Content -LiteralPath $address -Raw).Trim()
+                if ($url.Host -cne '127.0.0.1' -or $url.Port -ne $port -or $url.Scheme -cne 'http') {
+                    throw 'The launcher reported an unexpected address.'
+                }
                 try {
-                    $health = Invoke-RestMethod -Uri ($url + 'health') -TimeoutSec 5
-                    $ready = $health.status -eq 'ok' -and $health.version -eq "Calibre-Web-NextGen/$version"
+                    $response = Invoke-WebRequest -Uri ([uri]::new($url, 'login')) -UseBasicParsing -TimeoutSec 5
+                    $ready = $response.StatusCode -eq 200
                 } catch {
-                    Write-Verbose "Waiting for CWNG health: $_"
+                    Write-Verbose "Waiting for CWNG: $_"
                 }
             }
             if (-not $ready) { Start-Sleep -Seconds 1 }
@@ -71,6 +75,12 @@ function Start-And-Check {
             if ($count -ne '1') { Start-Sleep -Seconds 2 }
         } until ($count -eq '1' -or [DateTime]::UtcNow -ge $deadline)
         if ($count -ne '1') { throw 'The library does not contain exactly one smoke-test book.' }
+        $catalog = Invoke-WebRequest -Uri ([uri]::new($url, 'opds/books')) -UseBasicParsing -TimeoutSec 10 `
+            -MaximumRedirection 0 -Headers @{ Authorization = "Basic $credentials" }
+        $feed = [xml]$catalog.Content
+        if ($feed.SelectNodes("/*[local-name()='feed']/*[local-name()='entry']").Count -ne 1) {
+            throw 'CWNG did not serve the smoke-test book from the configured library.'
+        }
     } finally {
         if (-not $process.HasExited) {
             $signal = [Threading.EventWaitHandle]::OpenExisting("$prefix-quit")
