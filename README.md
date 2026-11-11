@@ -147,7 +147,7 @@ Choose the [Windows source installation](#windows-portable-source-installation) 
 
 Use Windows x64 and a writable folder. Setup needs internet access; it downloads the runtime and tools locally without Docker, WSL, a global Python/Calibre installation or a system PATH change.
 
-Download the Windows x64 installer from the [fork's releases](https://github.com/dapih/Calibre-Web-NextGen/releases) and run it in a writable folder. It downloads the latest Windows release, installs it in the adjacent `CWNG` folder, and opens the app. For everyday use, open `CWNG\CWNG.exe`. Its system tray menu offers **Open CWNG**, **Restart**, and **Quit**. Use the installer to reinstall or uninstall. See the [Windows installation guide](docs/install/windows-source.md#installer-and-app-launcher).
+Download the Windows x64 asset ending in `-installer.exe` from the [fork's releases](https://github.com/dapih/Calibre-Web-NextGen/releases) and run it in a writable folder. It downloads the latest Windows package, installs it in the adjacent `CWNG` folder, and opens the app. For everyday use, open `CWNG\CWNG.exe`. Its system tray menu offers **Open CWNG**, **Restart**, and **Quit**. See the [Windows installation guide](docs/install/windows-source.md#installer-and-app-launcher).
 
 #### Install from source
 
@@ -334,6 +334,8 @@ Admin → Settings holds many optional switches: auto-convert formats, automatic
 ---
 
 ## Updating
+
+**Windows installer:** Run the installer beside your existing `CWNG` folder and choose **Reinstall**. Choose to keep `.cwng-data` to retain settings, accounts, reading progress, and pending imports. If you still use the older `cwng-installer.exe`, download the versioned installer once from the [fork's releases](https://github.com/dapih/Calibre-Web-NextGen/releases). See [Windows update and removal](docs/install/windows-source.md#moving-updating-and-removal).
 
 **Windows source installation:** Stop the app, back up `.cwng-data` and your library, update the source, then rerun `install-windows.cmd` and `start-windows.cmd`. Existing configuration and ingest data are retained. See the [Windows guide](docs/install/windows-source.md#moving-updating-and-removal).
 
