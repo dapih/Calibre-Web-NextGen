@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: 'Windows release tag (windows-vX.Y.Z-rN). Leave blank to test without creating a draft.'
+        description: 'Windows release tag (cwng-windows-vX.Y.Z-rN). Leave blank to test without creating a draft.'
         type: string
         required: false
 
@@ -37,8 +37,8 @@ jobs:
           if ($env:GITHUB_REF -cne 'refs/heads/main') { throw 'Dispatch this workflow on main.' }
           if ($env:RELEASE_TAG) {
             $version = [regex]::Escape((Get-Content -Raw VERSION).Trim())
-            if ($env:RELEASE_TAG -cnotmatch "^windows-v$version-r[1-9][0-9]*$") {
-              throw 'Use windows-vX.Y.Z-rN with the version from VERSION.'
+            if ($env:RELEASE_TAG -cnotmatch "^cwng-windows-v$version-r[1-9][0-9]*$") {
+              throw 'Use cwng-windows-vX.Y.Z-rN with the version from VERSION.'
             }
           }
 
@@ -53,19 +53,26 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
-          $filter = '.[] | select(.draft == false and .prerelease == false and (.tag_name | startswith("windows-v")) and any(.assets[]; .name == "cwng-windows.zip" and .state == "uploaded")) | {tag_name, published_at, asset: (.assets[] | select(.name == "cwng-windows.zip"))}'
+          $filter = @'
+          .[] | select(.draft == false and .prerelease == false) | . as $release
+          | (if (.tag_name | startswith("cwng-windows-v")) then (.tag_name + ".zip")
+             elif (.tag_name | startswith("windows-v")) then "cwng-windows.zip"
+             else null end) as $package
+          | .assets[] | select(.name == $package and .state == "uploaded")
+          | {tag_name: $release.tag_name, published_at: $release.published_at, asset: .}
+          '@
           $rows = gh api --paginate "repos/$env:GITHUB_REPOSITORY/releases?per_page=100" --jq $filter
           if ($LASTEXITCODE) { throw 'Could not list published Windows releases.' }
           $previous = $rows | ConvertFrom-Json | Sort-Object published_at -Descending | Select-Object -First 1
           if (-not $previous) { throw 'No published split Windows package is available to test an upgrade.' }
           if ($env:RELEASE_TAG) {
-            $requested = [version]($env:RELEASE_TAG.Substring(9) -replace '-r', '.')
-            $published = [version]($previous.tag_name.Substring(9) -replace '-r', '.')
+            $requested = [version]($env:RELEASE_TAG -creplace '^cwng-windows-v' -creplace '-r', '.')
+            $published = [version]($previous.tag_name -creplace '^(cwng-)?windows-v' -creplace '-r', '.')
             if ($requested -le $published) { throw 'Use a tag newer than the published Windows release.' }
           }
-          gh release download $previous.tag_name --repo $env:GITHUB_REPOSITORY --pattern cwng-windows.zip --dir $env:RUNNER_TEMP
+          gh release download $previous.tag_name --repo $env:GITHUB_REPOSITORY --pattern $previous.asset.name --dir $env:RUNNER_TEMP
           if ($LASTEXITCODE) { throw 'Could not download the published Windows package.' }
-          $file = Get-Item -LiteralPath (Join-Path $env:RUNNER_TEMP 'cwng-windows.zip')
+          $file = Get-Item -LiteralPath (Join-Path $env:RUNNER_TEMP $previous.asset.name)
           $digest = 'sha256:' + (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
           if ($file.Length -ne $previous.asset.size -or $digest -cne $previous.asset.digest) {
             throw 'The previous Windows package failed size or SHA-256 verification.'
@@ -106,8 +113,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
-          installer=windows-release-assets/cwng-installer.exe
-          package=windows-release-assets/cwng-windows.zip
+          installer="windows-release-assets/${RELEASE_TAG}-installer.exe"
+          package="windows-release-assets/${RELEASE_TAG}.zip"
+          mv -- windows-release-assets/cwng-installer.exe "$installer"
+          mv -- windows-release-assets/cwng-windows.zip "$package"
           test -s "$installer"
           test -s "$package"
           if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
@@ -122,7 +131,7 @@ jobs:
           fi
           gh release create "$RELEASE_TAG" "$installer" "$package" \
             --repo "$GITHUB_REPOSITORY" --verify-tag --draft \
-            --title "CWNG for Windows $RELEASE_TAG" --notes "Windows x64 build of fork commit $GITHUB_SHA."
+            --title "CWNG for Windows ${RELEASE_TAG#cwng-windows-}" --notes "Windows x64 build of fork commit $GITHUB_SHA."
           assets=$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft,assets)
           jq -e '.isDraft and (.assets | length == 2)' <<<"$assets" >/dev/null
           for file in "$installer" "$package"; do

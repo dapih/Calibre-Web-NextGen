@@ -6,7 +6,7 @@ Calibre-Web-NextGen ships as a single Docker image:
 ghcr.io/new-usemame/calibre-web-nextgen:latest
 ```
 
-On Windows, the [portable installation guide](windows-source.md) covers setup from source or `cwng-installer.exe`, first-run library choices, and the `CWNG.exe` tray controls. The [Windows uninstall steps](windows-source.md#uninstall-on-windows) explain how to remove the app while keeping your books and settings.
+On Windows, the [portable installation guide](windows-source.md) covers setup from source or with the Windows installer, first-run library choices, and the `CWNG.exe` tray controls. The [Windows uninstall steps](windows-source.md#uninstall-on-windows) explain how to remove the app while keeping your books and settings.
 
 It's a drop-in for the standard Calibre-Web-Automated (CWA) image. **Switching keeps
 everything**: your books, users, settings, shelves and the Read checkmarks you've set all

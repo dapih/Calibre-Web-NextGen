@@ -34,7 +34,7 @@ internal static class WindowsLauncher
                     string missing = WindowsInstallation.MissingFile(root);
                     if (missing != null)
                         throw new FileNotFoundException("CWNG is missing " + missing +
-                            ". Reinstall with cwng-installer.exe or download it from:\r\n" + WindowsInstallation.InstallerUrl);
+                            ". Reinstall with the Windows installer from:\r\n" + WindowsInstallation.InstallerUrl);
                     owns = WindowsInstallation.TryAcquire(instance);
                 }
                 finally { maintenance.ReleaseMutex(); }
