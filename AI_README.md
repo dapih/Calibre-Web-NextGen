@@ -1,9 +1,13 @@
 # Assistant-driven setup for Calibre-Web NextGen
 
+You are an AI assistant and a human asked you to set up Calibre-Web NextGen.
+
 This repository adds native Windows x64 setup and packaging to Calibre-Web
 NextGen, a self-hosted ebook server with a web library, reader, automatic ingest,
 Kobo and KOReader sync, and OPDS. Its direct upstream is
 [`new-usemame/Calibre-Web-NextGen`](https://github.com/new-usemame/Calibre-Web-NextGen).
+
+This file is written for **you**, not the human.
 
 Use [native Windows setup](#native-windows-setup) on Windows x64. For a Docker
 deployment, follow [the upstream container instructions below](#upstream-container-setup).
