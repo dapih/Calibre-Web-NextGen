@@ -75,7 +75,7 @@ function Start-And-Check {
             if ($count -ne '1') { Start-Sleep -Seconds 2 }
         } until ($count -eq '1' -or [DateTime]::UtcNow -ge $deadline)
         if ($count -ne '1') { throw 'The library does not contain exactly one smoke-test book.' }
-        $catalog = Invoke-WebRequest -Uri ([uri]::new($url, 'opds/books')) -UseBasicParsing -TimeoutSec 10 `
+        $catalog = Invoke-WebRequest -Uri ([uri]::new($url, 'opds/books/letter/00')) -UseBasicParsing -TimeoutSec 10 `
             -MaximumRedirection 0 -Headers @{ Authorization = "Basic $credentials" }
         $feed = [xml]$catalog.Content
         if ($feed.SelectNodes("/*[local-name()='feed']/*[local-name()='entry']").Count -ne 1) {
