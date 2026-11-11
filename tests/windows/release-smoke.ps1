@@ -12,6 +12,9 @@ $candidate = Join-Path $work 'candidate'
 
 function Invoke-InstallerMethod {
     param([string]$Name, [object[]]$Arguments)
+    for ($index = 0; $index -lt $Arguments.Length; $index++) {
+        if ($null -ne $Arguments[$index]) { $Arguments[$index] = $Arguments[$index].PSObject.BaseObject }
+    }
     $installer.GetType('WindowsInstaller').GetMethod($Name, $flags).Invoke($null, $Arguments)
 }
 
@@ -112,7 +115,7 @@ try {
     Start-And-Check $root -ImportBook
 
     if ($PreviousPackage) {
-        $libraries = $installer.GetType('WindowsInstaller').GetMethod('FindLibraries', $flags).Invoke($null, @($root))
+        $libraries = Invoke-InstallerMethod FindLibraries @($root)
         $reviewed = [Collections.Generic.List[string]]::new([string[]]$libraries)
         $kept = [Collections.Generic.HashSet[string]]::new($reviewed, [StringComparer]::OrdinalIgnoreCase)
         Invoke-InstallerMethod ReplaceInstallation @($root, $candidate, $false, $true, $reviewed, $kept, $null) | Out-Null

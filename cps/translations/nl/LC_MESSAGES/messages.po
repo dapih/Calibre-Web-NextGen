@@ -672,6 +672,14 @@ msgstr "Update mislukt:"
 msgid "HTTP Error"
 msgstr "HTTP-fout"
 
+#: cps/spa_strings.py
+msgid "HTTPS, LDAP and OAuth are not yet supported in native Windows mode. Home-network connections use unencrypted HTTP."
+msgstr "HTTPS, LDAP en OAuth worden nog niet ondersteund in de native Windows-modus. Verbindingen op het thuisnetwerk gebruiken onversleuteld HTTP."
+
+#: cps/spa_strings.py
+msgid "This download client is not available on Windows; use an OPDS source."
+msgstr "Deze downloadclient is niet beschikbaar onder Windows. Gebruik een OPDS-bron."
+
 #: cps/admin.py cps/updater.py
 msgid "Connection error"
 msgstr "Verbindingsfout"

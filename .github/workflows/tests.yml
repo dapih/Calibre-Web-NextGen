@@ -215,7 +215,7 @@ jobs:
       
       - name: Comment PR with results
         uses: actions/github-script@v9
-        if: github.event_name == 'pull_request' && failure()
+        if: github.repository != 'dapih/Calibre-Web-NextGen' && github.event_name == 'pull_request' && failure()
         with:
           script: |
             github.rest.issues.createComment({
