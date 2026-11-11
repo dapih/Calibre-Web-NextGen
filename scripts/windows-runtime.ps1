@@ -1,5 +1,5 @@
 # Shared helpers for provisioning app-local Windows tools.
-function Get-CwngWindowsToolPins {
+function Get-CwngSourceToolVersions {
     param([string]$AppRoot)
 
     $versions = @{}
@@ -12,6 +12,18 @@ function Get-CwngWindowsToolPins {
     foreach ($key in @('PYTHON_VERSION', 'PYTHON_BUILD_STANDALONE_RELEASE', 'CALIBRE_RELEASE', 'KEPUBIFY_RELEASE')) {
         if (-not $versions.ContainsKey($key)) { throw "Missing shared $key pin in Dockerfile." }
     }
+    $versions
+}
+
+function Get-CwngWindowsToolPins {
+    param([string]$AppRoot)
+
+    $manifest = Join-Path $AppRoot 'scripts\windows-tool-versions.psd1'
+    $versions = if (Test-Path -LiteralPath $manifest -PathType Leaf) {
+        Import-PowerShellDataFile -LiteralPath $manifest
+    } else {
+        Get-CwngSourceToolVersions $AppRoot
+    }
     $checksums = Import-PowerShellDataFile -LiteralPath (Join-Path $PSScriptRoot 'windows-tool-checksums.psd1')
     $pbs = $versions.PYTHON_BUILD_STANDALONE_RELEASE
     $python = "cpython-$($versions.PYTHON_VERSION)+${pbs}-x86_64-pc-windows-msvc-install_only_stripped.tar.gz"
@@ -19,7 +31,7 @@ function Get-CwngWindowsToolPins {
     $kepubify = "$($versions.KEPUBIFY_RELEASE)/kepubify-windows-64bit.exe"
     foreach ($asset in @($python, $calibre, $kepubify)) {
         if ($checksums[$asset] -notmatch '^[0-9a-f]{64}$') {
-            throw "Missing Windows SHA-256 for $asset. Update scripts/windows-tool-checksums.psd1 for the new Dockerfile pin."
+            throw "Missing Windows SHA-256 for $asset in scripts/windows-tool-checksums.psd1."
         }
     }
 

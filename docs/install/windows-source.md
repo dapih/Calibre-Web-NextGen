@@ -16,13 +16,15 @@ After setup, CWNG opens the main web interface. If a library that was previously
 
 Download the Windows x64 installer from the [fork's releases](https://github.com/dapih/Calibre-Web-NextGen/releases) and run it in a writable folder. It manages the `CWNG` folder beside it. After you confirm a new installation, it checks the fork's published Windows releases, verifies the selected asset against its GitHub SHA-256, and prepares the app, bundled tools, and browser interface. It opens the app after a successful install and then exits.
 
+The latest Windows release is [CWNG for Windows v4.1.66-r2](https://github.com/dapih/Calibre-Web-NextGen/releases/tag/cwng-windows-v4.1.66-r2). Its installer is `cwng-windows-v4.1.66-r2-installer.exe`, and its application package is `cwng-windows-v4.1.66-r2.zip`.
+
 If the app is already installed, the installer offers **Reinstall**, **Uninstall**, and **Cancel**. It also offers **Open CWNG** when the app is running. Reinstall checks for the latest release, asks whether to retain `.cwng-data`, and preserves internal library files. If you select an internal library, CWNG uses it after reinstalling. Preserved reading progress is tied to the original library, so changing to a different library in the installer requires choosing fresh settings. For installs started from a console, shut down the console instance before reinstalling or uninstalling.
 
 For everyday use, run `CWNG.exe` inside the installed folder. It checks for the runtime and required files before starting. Left-click its tray icon to open the home page. Right-click for **Open CWNG**, **Restart**, and **Quit**. Restart opens the home page when the server is ready. Windows passes the URL to your default browser, which controls tab and focus behavior. Run `CWNG.exe --background` to start without opening the browser. Startup, restart, and quit show a progress window, and the launcher log is in `.cwng-data\windows-launcher.log`.
 
 To build from a Windows checkout, run `powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\windows-build-launcher.ps1`. It produces `cwng-installer.exe`, `CWNG.exe`, and `cwng-windows.zip` in `dist\windows`. The package already contains the app launcher. The installer can also read the verified source payload from the [older combined Windows release](https://github.com/dapih/Calibre-Web-NextGen/releases/tag/windows-v4.1.62).
 
-Fork maintainers can run **Windows package** from Actions on `main`. Leave the tag blank to test the package and the upgrade from the previous published Windows release. Enter a tag in the form `cwng-windows-vX.Y.Z-rN`. For example, `cwng-windows-v4.1.66-r2` creates a draft titled **CWNG for Windows v4.1.66-r2** with the assets `cwng-windows-v4.1.66-r2-installer.exe` and `cwng-windows-v4.1.66-r2.zip`. Confirm the tag, assets, and release notes before publishing the draft. Use the next revision for another build of the same app version.
+Fork maintainers can run **Windows package** from Actions on `main`. Leave the tag blank to test the package and the upgrade from the previous published Windows release. Enter a tag in the form `cwng-windows-vX.Y.Z-rN`. For example, `cwng-windows-v4.1.66-r3` creates a draft titled **CWNG for Windows v4.1.66-r3** with the assets `cwng-windows-v4.1.66-r3-installer.exe` and `cwng-windows-v4.1.66-r3.zip`. Confirm the tag, assets, and release notes before publishing the draft. Use the next revision for another build of the same app version.
 
 ## Restarting and stopping
 
@@ -78,7 +80,7 @@ To update an installer-managed copy, run the Windows installer and choose **Rein
 
 For a source checkout, stop the application, back up `.cwng-data` and your library, update the source, and rerun `install-windows.cmd`. Source setup checks the installed tool receipts and stages replacements when pins change.
 
-Python, Calibre and kepubify use the shared version pins from the root `Dockerfile`. When merging an upstream pin change, add the verified SHA-256 for the corresponding Windows artifact to [`scripts/windows-tool-checksums.psd1`](../../scripts/windows-tool-checksums.psd1). Setup reports a missing checksum before touching the runtime. ImageMagick and build-only Node use their own Windows pins.
+Source setup reads the shared Python, Calibre and kepubify versions from the root `Dockerfile`. The Windows release build copies those pins into a manifest in the ZIP, which includes a Windows-only README. When merging an upstream pin change, add the verified SHA-256 for the corresponding Windows artifact to [`scripts/windows-tool-checksums.psd1`](../../scripts/windows-tool-checksums.psd1). Setup reports a missing checksum before touching the runtime. ImageMagick and build-only Node use their own Windows pins.
 
 ### Uninstall on Windows
 
