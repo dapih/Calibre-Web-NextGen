@@ -46,7 +46,10 @@ NON_SHIPPING_PATHS = frozenset(
         # application. Changes confined to this harness are operational fixes,
         # not user-facing release-note events.
         ".github/workflows/docker-image-build-dev.yml",
+        ".github/workflows/docker-image-build-release.yml",
+        ".github/workflows/plugin-release-publish.yml",
         ".github/workflows/tests.yml",
+        ".github/workflows/windows-release.yml",
         # The upstream-comparison ledger records changes that have ALREADY
         # shipped, with their squash SHA and containing release tag. A
         # post-release backfill of those fields is bookkeeping about the past,
