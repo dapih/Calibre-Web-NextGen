@@ -5,7 +5,7 @@ This fork, `dapih/Calibre-Web-NextGen`, packages the self-hosted library server 
 ## Project guidance
 
 - **Setup, updates, moves, or recovery.** Read the [Windows installation guide](docs/install/windows-source.md). Preserve `.cwng-data/`, the installed `.cwng-runtime/`, pending ingest, and user-selected libraries, including libraries outside the checkout. Use a disposable installation for verification. Treat `.cwng-data/`, `.cwng-runtime/`, and user-selected library folders as local installation data when cleaning or publishing the repository.
-- **Windows packaging, upstream sync, or release preparation.** Read the [maintainer instructions](docs/install/windows-source.md#building-and-publishing-windows-releases). Use the existing Windows smoke check for package changes. Ask before expanding into unrelated upstream code or tests.
+- **Windows packaging, upstream sync, or release preparation.** Read the [maintainer instructions](docs/install/windows-source.md#building-and-publishing-windows-releases). The Windows smoke check is optional for updates to `main` and runs as part of the Windows release workflow. Ask before expanding into unrelated upstream code or tests.
 - **Changes users will notice in the Windows distribution.** Follow the [Windows changelog instructions](changelog.d/README.md#windows-release-fragments).
 - **Python changes under `cps/`.** Before changing a Python file, symbol, or Flask route, follow the [impact-map skill](.agents/skills/cwng-impact-map/SKILL.md).
 
@@ -15,7 +15,7 @@ Keep small docs-only changes local. Edit the file and check the diff. Skip build
 
 ### Keep the primary checkout current
 
-After any authorized merge to the fork's main from a separate worktree, fetch and fast-forward the primary checkout unless the user requested a different revision. Preserve local instructions, ignore edits, staged and unstaged changes, and untracked or ignored files. Verify the primary checkout's HEAD against the fork's live main before reporting the merge complete. If a safe fast-forward is blocked, report the specific conflict and which checkout is behind.
+The fork's `main` accepts direct fast-forward pushes. Push or merge only when authorized. After updating the fork's `main`, fetch and fast-forward the primary checkout unless the user requested a different revision. Preserve local instructions, ignore edits, staged and unstaged changes, and untracked or ignored files. Verify the primary checkout's HEAD against the fork's live `main` before reporting the update complete. If a safe fast-forward is blocked, report the specific conflict and which checkout is behind.
 
 ### Scope and release verification
 
