@@ -112,7 +112,7 @@ The Windows worker imports stable files after a library has been configured. A f
 
 ## Building and publishing Windows releases
 
-Bring stable upstream releases into the fork through a sync PR. Review urgent upstream fixes individually. For local changes, push a branch to the fork and open a PR to `main`. The required **Windows package and smoke test** check builds the ZIP, installs and starts CWNG, and imports a book.
+Bring stable upstream releases into the fork through a sync PR. Review urgent upstream fixes individually. For local changes, push a branch to the fork and open a PR to `main`. For changes to package inputs or code, the required **Windows package and smoke test** check builds the ZIP, installs and starts CWNG, and imports a book. For documentation-only PRs, it checks the changed paths. Changes to the README bundled in the ZIP run the full smoke check.
 
 Source setup reads the shared Python, Calibre and kepubify versions from the root `Dockerfile`. When an upstream pin changes, add the verified SHA-256 for the corresponding Windows artifact to [`scripts/windows-tool-checksums.psd1`](../../scripts/windows-tool-checksums.psd1). Setup requires those checksums before provisioning and verifies each download before extraction. ImageMagick and build-only Node use their own Windows pins.
 

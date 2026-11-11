@@ -26,7 +26,30 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 2
           persist-credentials: false
+
+      - name: Check whether the PR only changes documentation
+        if: github.event_name == 'pull_request'
+        id: scope
+        shell: pwsh
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          # Compare the tested merge commit with its base. A rename counts as both paths.
+          $paths = git diff --name-only --no-renames $env:BASE_SHA HEAD --
+          if ($LASTEXITCODE -ne 0) {
+            Write-Warning 'Could not classify the PR changes. Running the Windows smoke test.'
+            exit 0
+          }
+          $documentation = '^(AGENTS|AI_README|CHANGELOG|CHANGES-vs-upstream|CONTRIBUTING|README)\.md$|^(docs|changelog\.d|changelogs)/.+\.md$'
+          $packageChanges = $paths | Where-Object {
+            $_ -cnotmatch $documentation -or $_ -ceq 'docs/install/windows-package.md'
+          }
+          if ($paths -and -not $packageChanges) {
+            'docs_only=true' >> $env:GITHUB_OUTPUT
+            'Documentation-only PR. No Windows package inputs changed.' >> $env:GITHUB_STEP_SUMMARY
+          }
 
       - name: Validate the release request
         if: github.event_name == 'workflow_dispatch'
@@ -43,6 +66,7 @@ jobs:
           }
 
       - name: Build the Windows package
+        if: steps.scope.outputs.docs_only != 'true'
         shell: powershell
         run: .\scripts\windows-build-launcher.ps1
 
@@ -81,6 +105,7 @@ jobs:
           "Upgrade baseline: $($previous.tag_name)" >> $env:GITHUB_STEP_SUMMARY
 
       - name: Install, start, and import a book
+        if: steps.scope.outputs.docs_only != 'true'
         shell: powershell
         run: .\tests\windows\release-smoke.ps1 -PreviousPackage $env:CWNG_PREVIOUS_PACKAGE
 
